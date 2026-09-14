@@ -1,0 +1,1 @@
+export const getAuthDestination = (user) => user?.role === "admin" ? "/admin" : "/home";

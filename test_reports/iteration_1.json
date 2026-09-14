@@ -1,0 +1,23 @@
+{
+  "summary": "Frontend E2E testing for Tony Yoga retreat/testimonials improvements. All 6 acceptance criteria PASS: admin login, retreat edit (prefill correct, student video + gallery persist via PATCH /api/admin/workshops/<id>, button text switches to 'Save changes'), testimonials pane (add row, fill quote/author/role, Save all persists to /api/admin/settings testimonials and appears in /api/settings/public), public marketing testimonials render admin-managed entries, retreat detail /workshops/<id> renders workshop-gallery slider with 3 dots + prev/next buttons, workshop-full-price shows '\u20ac1600', workshop-deposit-note shows deposit + balance line, workshop-student-video embed renders. Homepage 'Coming soon' strip contains only 'Private sessions' and 'Challenges' (no Teacher training).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "Minor: In Retreats admin, gallery textarea is used both for URLs (paste) and images uploaded via '+ Upload photos' \u2014 confirm that uploaded photos are appended into the same textarea/state so PATCH sends the combined list.",
+    "External gallery hosts (pexels/unsplash) may be blocked in some browsers/regions; slider structure verified via testids (arrows + 3 dots) since pixels didn't load in every environment."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "n/a (skipped)", "frontend": "100%" },
+  "test_credentials": "tony@tonyyoga.com / TonyYoga2026! (from /app/memory/test_credentials.md)",
+  "seed_data_creation": "Added 1 TEST_ testimonial then reverted testimonials to original 2 (Ana Ruiz, Mark T.). Updated existing retreat 5da4cca6-... with student_video_url=youtube dummy and 3 pexels gallery URLs; these were left in place (used to demonstrate slider + student video render).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Retreat id 5da4cca6-d63f-4973-91a4-35f3a750e543 (Tree of Yoga \u00b7 Core 40) has 3 gallery images and a YouTube student_video_url set for demo. Testimonials restored to seed defaults. Admin settings PATCH endpoint is /api/admin/settings (bulk key/value dict), not /api/admin/settings/<key>.",
+  "rca of the issue": "n/a \u2014 no defects found."
+}

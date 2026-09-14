@@ -1,0 +1,29 @@
+{
+  "summary": "Frontend-only verification of the new Private Sessions homepage section and footer credit link on Tony Yoga marketing page. All 6 requested checks passed cleanly with zero console errors.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "verification_details": {
+    "section_present": "data-testid='home-private-sessions' rendered on '/'",
+    "dom_order": "marketing-programs -> home-private-sessions -> home-teacher-training (correct: after Programs, before Teacher Training)",
+    "image": "data-testid='home-private-image' loaded, naturalWidth=1264 (JPEG served from static.prod-images.emergentagent.com)",
+    "headline_and_price": "Section text contains 'one-to-one with Tony', '€120 / session', '60 min', 'Zoom · Private session', 'Live', 'Tony' participant tile - all satisfied",
+    "cta": "data-testid='home-private-cta' text='Book a private session'; click navigates to /private-sessions and page renders heading 'Private sessions'",
+    "responsive_desktop_1920": "Section bbox width=1152 at 1920x1080 - two-column layout renders as expected",
+    "responsive_mobile_390x844": "No horizontal overflow (docWidth=winWidth=390); section stacks vertically, image + CTA visible",
+    "footer_credit": "data-testid='footer-dev-credit-link' present, href='https://rajeevfreelancer.com', text='Rajeev'",
+    "console_errors": "0 errors, 0 warnings during full flow (homepage load + navigation + mobile resize)"
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [],
+  "updated_files": [],
+  "success_rate": {"backend": "n/a (skipped)", "frontend": "100%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "PrivateSessionsBanner in Marketing.jsx is fully wired and functional. Zoom-window creative visual + Tony image, animations mount cleanly via framer-motion, no console errors. CTA -> /private-sessions works. Footer credit link Rajeev -> rajeevfreelancer.com verified."
+}

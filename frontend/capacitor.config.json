@@ -1,0 +1,19 @@
+{
+  "appId": "com.tonysanchezyoga.app",
+  "appName": "Tony Sanchez Yoga",
+  "webDir": "build",
+  "backgroundColor": "#FAFAF7",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#FAFAF7",
+      "showSpinner": false
+    }
+  },
+  "ios": { "contentInset": "always" },
+  "android": { "allowMixedContent": false }
+}

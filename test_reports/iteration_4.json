@@ -1,0 +1,44 @@
+{
+  "summary": "Extended provider-migration backend suite with missing direct SDK audio/transcription success, ASGI /assistant/voice contract checks, multi-turn memory isolation, request/session guard coverage, and safe cleanup validations.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/files/{path} (routers/uploads.py::_get_object)",
+        "issue": "close() await detection uses asyncio.iscoroutine, which misses non-coroutine awaitables returned by some close implementations; potential resource-leak edge case remains.",
+        "priority": "HIGH"
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_provider_migration.py",
+    "/app/test_reports/pytest/provider_migration.xml"
+  ],
+  "action_items": [
+    "Optional minimal hardening: in /app/backend/routers/uploads.py, replace asyncio.iscoroutine(close_result) with inspect.isawaitable(close_result) before awaiting.",
+    "Keep provider-network tests as MOCKED transport coverage until live key is available for production integration verification."
+  ],
+  "critical_code_review_comments": [
+    "Daily-cap test now restores the exact pre-test assistant_usage document instead of deleting/replacing production day counters blindly.",
+    "Lead-creation regression test now cleans inserted ai_lead document and avoids lingering test@example.com records.",
+    "Added explicit regression proving current close() logic does not await generic awaitables; production behavior unchanged per scope."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_provider_migration.py",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "success_rate": {
+    "backend": "100% (19/19 in provider migration suite)",
+    "frontend": "N/A (skipped per request)"
+  },
+  "seed_data_creation": "Temporary ai_lead and assistant usage/session docs created during tests; all cleaned/restored in-test.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend-only run completed. New coverage includes direct AsyncOpenAI speech/transcription success via httpx.MockTransport, /assistant/voice ASGI response contract (transcript/audio_url/audio_error/end_conversation/speak=false), sequential same-session chat memory + independent session isolation, request_guard 41st request 429, busy lease 409, upstream 401/429/timeout/empty-stream sanitization with no successful-turn usage increments. Provider upstream in tests is MOCKED (no live key validation).",
+  "rca of the issue": "Potential edge-case RCA: uploads._get_object currently awaits stream.close() only when asyncio.iscoroutine(close_result) is true. Some libraries return generic awaitables (implementing __await__) that are not coroutine objects, so cleanup may not execute. Mitigation recommendation: use inspect.isawaitable(close_result) for robust await detection."
+}

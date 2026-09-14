@@ -1,0 +1,85 @@
+{
+  "project_title": "Tony Yoga - Advanced Admin Shell & Performance Dashboard",
+  "app_type": "dashboard",
+  "archetype": "ORGANIC & EARTHY",
+  "typography": {
+    "heading_font": "Fraunces, Georgia, serif",
+    "body_font": "Inter, -apple-system, BlinkMacSystemFont, sans-serif",
+    "eyebrow": "Fraunces, Georgia, serif; 11px; letter-spacing: 0.28em; text-transform: uppercase; color: #839682;",
+    "scale": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl font-medium serif leading-tight",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl font-medium serif leading-tight",
+      "h3": "text-xl sm:text-2xl font-medium serif leading-snug",
+      "h4": "text-lg sm:text-xl font-semibold leading-snug",
+      "body": "text-base text-[#545E56] leading-relaxed",
+      "small": "text-sm text-[#6B7269]"
+    }
+  },
+  "colors": {
+    "cream_bg": "#FAFAF7",
+    "cream_surface": "#F2F2EC",
+    "terracotta": "#B25A45",
+    "terracotta_dark": "#8F4535",
+    "terracotta_light": "#FBF1EE",
+    "sage": "#839682",
+    "sage_dark": "#545E56",
+    "ink": "#1C221F",
+    "muted_text": "#6B7269",
+    "border_line": "#E5E6DF",
+    "dark_card_bg": "#0F1211",
+    "success_bg": "#EEF1EC",
+    "success_text": "#5C7355"
+  },
+  "design_rules": {
+    "theme": "Light mode primary with organic dark contrast sections (#1C221F). Dashboard follows High Density Grid rules.",
+    "border_radius": "rounded-3xl for outer containers, rounded-2xl for inner elements/inputs, rounded-full for pills/toggles.",
+    "spacing": "Generous spacing (p-6 to p-10 for cards). For admin dense layouts: p-4 to p-6, gap-4 to gap-6.",
+    "buttons": "Pill buttons with hover state transitions and active press states (.pill, .pill-primary, .pill-ghost)",
+    "contrast": "Ensure minimum 4.5:1 contrast for body text and interactive states. Always specify hover text color explicitly.",
+    "dashboard_layout": "Full viewport height (h-screen) flex layout. Fixed left sidebar (w-64 or w-72) with vertical navigation, and a scrollable main content area (flex-1). Never use center-everything.",
+    "charts": "Use Recharts. Organic colors for lines/bars (terracotta, sage). Subtle grid lines, transparent backgrounds."
+  },
+  "testing_requirements": {
+    "rule": "ALL interactive elements, form inputs, toggles, status indicators, and navigation links MUST have kebab-case data-testid attributes",
+    "examples": [
+      "data-testid=\"admin-sidebar-nav\"",
+      "data-testid=\"admin-stats-chart\"",
+      "data-testid=\"admin-tab-stats\""
+    ]
+  },
+  "feature_specifications": {
+    "admin_auth_redirect": {
+      "location": "Login/Auth flow (e.g., Login.jsx or auth callback)",
+      "functionality": "Role-aware redirection. Fix the bug where admins go to normal user console first. If user.role === 'admin', redirect directly to '/admin'."
+    },
+    "admin_shell_navigation": {
+      "location": "Admin.jsx (Shell Layout)",
+      "functionality": "Transform the current layout into a modern admin shell: a persistent left-side navigation sidebar for all 20+ management menus (Pages, Classes, Shop, etc.), keeping current functionality but adopting a full-height flex layout."
+    },
+    "advanced_admin_dashboard": {
+      "location": "StatsPane.jsx (Overview)",
+      "functionality": "Modern 'top graph' visualizing website and native/PWA app performance (page views, session durations) over time. Below it, key business metrics (sales, signups, active users) in a 'Bento' grid, alongside recent activity."
+    }
+  },
+  "image_urls": {
+    "yoga_meditation_pose": "https://images.unsplash.com/photo-1577344718665-3e7c0c1ecf6b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwyfHx5b2dhJTIwcHJhY3RpY2UlMjBwb3NlJTIwYmFja2dyb3VuZCUyMG1lZGl0YXRpb258ZW58MHx8fHwxNzg5MjAwMzE4fDA&ixlib=rb-4.1.0&q=85",
+    "yoga_floor_practice": "https://images.unsplash.com/photo-1532798442725-41036acc7489?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1OTN8MHwxfHNlYXJjaHwxfHx5b2dhJTIwcHJhY3RpY2UlMjBwb3NlJTIwYmFja2dyb3VuZCUyMG1lZGl0YXRpb258ZW58MHx8fHwxNzg5MjAwMzE4fDA&ixlib=rb-4.1.0&q=85"
+  },
+  "instructions_to_main_agent": [
+    "Preserve existing Tony Yoga design system (#B25A45 terracotta accent, Fraunces serif headings, #1C221F ink dark cards, #FAFAF7 cream background) but adapt for a dense Dashboard environment.",
+    "Refactor Admin.jsx from a max-w-6xl centered layout to a modern full-bleed dashboard shell: <div className='flex h-screen bg-cream_bg'> with a fixed sidebar <aside> and scrollable <main>.",
+    "Fix the login redirection logic so admin users navigate directly to /admin instead of the normal user view.",
+    "Revamp StatsPane.jsx into an Advanced Dashboard. Include a large, polished Area/Line Chart using Recharts showing website vs app performance over time.",
+    "Use Recharts for metrics. Avoid standard 'Vercel' looks; use organic colors (sage and terracotta) for chart lines, with custom Tooltips matching the organic theme.",
+    "Structure the dashboard using the 'Bento' grid protocol (Mode B): dense, data correlation, strict hierarchy.",
+    "Maintain complete data-testid coverage."
+  ],
+  "UNIVERSAL GUIDELINES FOR MAIN AGENT": [
+    "Do not use transparent backgrounds for dropdowns or floating headers; use solid colors or glassmorphism (backdrop-blur + bg-opacity).",
+    "Avoid applying generic `transition-all`. Target specific properties like `transition-colors` or `transition-transform`.",
+    "Do not add global centered text alignment. Keep text left-aligned for natural reading flow.",
+    "Ensure hover states explicitly declare text colors (e.g., hover:bg-ink hover:text-white).",
+    "Use pill-shaped or rounded-xl modern buttons.",
+    "Avoid AI emojis in UI, use Phosphor or Lucide icons instead."
+  ]
+}

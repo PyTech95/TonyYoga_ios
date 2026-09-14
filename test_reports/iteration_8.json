@@ -1,0 +1,23 @@
+{
+  "summary": "All 4 admin features validated end-to-end. (1) Schedule Window: all four delay buttons (10/30/60/0) plus exit-intent toggle render in settings-app-downloads pane; selecting 10s + Save shows a success toast and GET /api/settings/public returns download_popup_delay_seconds=10. (2) Offer Image Upload: switching to Custom mode reveals the ContentImageInput with settings-popup-image-field, settings-popup-image-url and settings-popup-image-upload; setting the URL and saving persists to download_popup_image_url in public settings. (3) Session Pricing Control: private-sessions-pane shows private-pricing-card with price/duration/image inputs; saving 150 / 45 shows a success toast and public settings return private_session_price=150 and private_session_duration_min=45. Public /private-sessions private-price-each shows €150, '45 min' subtitle is present, and selecting the '2 sessions' button computes €300 (2×150). Homepage home-private-sessions section reflects €150 and 45 min. (4) Printful pane renders print-media-pane with printful-token-input and printful-connect-btn; clicking Connect with an empty token shows the 'Paste your Printful API token first' error toast. Cleanup PATCH restored all defaults (price=120, duration=60, delay=30, on_exit=false, mode=app, image='').",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "AppDownloadsSettings.jsx: pickDelay(0) writes download_popup_delay_seconds=999 as a sentinel to represent 'On exit only'. That magic number leaks into the public settings response. Consider representing 'exit only' purely via download_popup_on_exit=true + delay=0 (or null), and clamp the numeric field to a documented range in the backend serializer.",
+    "PrivateSessionsPane.jsx PricingCard: price/duration inputs are stored as strings from the input event and PATCHed as-is; the backend clamps them, but sending Number(...) on save would be safer and avoids future validation regressions.",
+    "PrivateSessions.jsx count-buttons total calculation was verified to use priceEach (150 × 2 = €300) — good. However heroImg/durationMin/priceEach all read from /settings/public without a loading skeleton on the price element, so it briefly flashes the default (€120 / 60 min) before hydrating. Minor UX polish; add a loading state or SSR default from the same fetch."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "tony@tonyyoga.com / TonyYoga2026! (admin)",
+  "seed_data_creation": "None. Mutated settings during the run and fully restored defaults at cleanup (price=120, duration=60, delay=30, on_exit=false, mode=app, download_popup_image_url='').",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Admin sidebar entries are buttons whose text matches exactly ('Settings','Private Sessions','Print Media'). There is ALSO a hidden <select><option>…</option></select> for a mobile fallback with the same labels — playwright's get_by_text(...).first can resolve to the invisible <option> and hang. Prefer scoping to 'aside button/a, nav button/a' or use data-testid. All required data-testids exist and are stable. Public reflection is instant (settings cached briefly but updates within <1s of PATCH)."
+}

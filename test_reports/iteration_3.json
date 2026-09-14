@@ -1,0 +1,38 @@
+{
+  "summary": "Completed provider-migration regression for backend and frontend with public endpoint validation, SDK contract tests, clean-venv install/import checks, and UI sanity checks.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_provider_migration.py",
+    "/app/test_reports/pytest/provider_migration.xml",
+    "/app/test_reports/provider_migration/tony-runtime-install-iteration3.log"
+  ],
+  "action_items": [
+    "No functional regression found in tested migration scope.",
+    "Optional: keep existing historical tests separate; they include legacy hardcoded preview URLs unrelated to this migration."
+  ],
+  "critical_code_review_comments": [
+    "Fixed a runtime upload retrieval bug in /app/backend/routers/uploads.py where stream.close() was awaited unconditionally and raised TypeError for sync close implementations."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_provider_migration.py",
+    "/app/backend/routers/uploads.py",
+    "/app/test_reports/iteration_3.json"
+  ],
+  "success_rate": {
+    "backend": "100% (8/8 in migration suite)",
+    "frontend": "100% (targeted sanity checks passed)"
+  },
+  "seed_data_creation": "Created and cleaned temporary assistant leads, assistant usage/session docs, and GridFS upload records during tests.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Migration regression suite is now at /app/backend/tests/test_provider_migration.py and uses official AsyncOpenAI SDK with httpx.MockTransport for provider behavior coverage (MOCKED provider network only in tests). Public preview checks verified keyless AI controlled errors, settings/programs/products snapshot parity, GridFS upload/download parity, and frontend assistant/settings behavior.",
+  "rca of the issue": "RCA: /api/files/{path} returned 502 after upload due to a close-method mismatch in GridFS download cleanup; stream.close() can be synchronous and was being awaited. Repro: upload image via /api/admin/uploads then GET returned file URL caused TypeError and 502. Mitigation: call close(), then await only if coroutine. Verified byte-for-byte retrieval and content-type pass after fix."
+}

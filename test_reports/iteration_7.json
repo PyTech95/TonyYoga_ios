@@ -1,0 +1,32 @@
+{
+  "summary": "Full end-to-end testing of the admin-controllable app-download / custom-offer popup. Admin login worked, the 'Pop-up & app downloads' pane rendered with all required data-testids, switching to Custom mode + saving persisted correctly (verified via GET /api/settings/public), the public homepage popup rendered custom content with the custom CTA (correct label + href) and no app-store buttons and no floating dock, disabling the master toggle prevented both the popup and the dock on the public site, and re-enabling with app mode restored the app-store popup + dock. Cleanup restored defaults (enabled=true, mode=app, all custom fields blank).",
+  "backend_issues": { "critical": [], "minor": [] },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "Admin Settings – Pop-up & app downloads",
+        "issues": [
+          "Minor UX: title/description/eyebrow/cta fields written while in Custom mode are NOT cleared or hidden when the admin switches back to App mode. They remain saved and, because AppDownloads.jsx falls back to settings.download_popup_title || <default>, the app-mode popup then shows the leftover custom title instead of 'Take Tony Yoga with you.'. Suggest either (a) hiding/clearing custom fields on mode switch server-side, or (b) applying custom-mode fields only when mode==='custom' in the frontend fallback logic."
+        ]
+      }
+    ]
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Optional polish: in AppDownloads.jsx, only use download_popup_title/description/eyebrow/image when mode === 'custom' (currently they leak into app mode if set previously)."
+  ],
+  "critical_code_review_comments": [
+    "AppDownloads.jsx line 66-72: fallbacks read custom copy regardless of mode, causing leftover custom text to appear in app-mode popup after mode switch. Gate these behind mode === 'custom'.",
+    "AppDownloadsSettings.jsx: when the user changes mode back to 'app', consider clearing/hiding the custom fields client-side so persistence surprises don't happen."
+  ],
+  "updated_files": [],
+  "success_rate": { "backend": "100%", "frontend": "100%" },
+  "test_credentials": "tony@tonyyoga.com / TonyYoga2026! (admin)",
+  "seed_data_creation": "None (settings were mutated during test and fully restored to defaults at cleanup)",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Popup component sets sessionStorage 'ty_download_invited' after showing; use fresh browser context (as done here) or clear sessionStorage before dispatching 'tony-open-downloads'. Popup gates on eligible pages – excludes /admin, /instructor, /login, /checkout etc., so trigger from '/'.  Data-testids present and stable.",
+  "rca of the issue": "N/A – all required flows PASSED."
+}
