@@ -16,8 +16,8 @@ import { contentImageUrl } from "@/components/ContentImageInput";
 
 const HERO = "https://images.unsplash.com/photo-1767611127093-8ed12ce7789d?crop=entropy&cs=srgb&fm=jpg&q=85&w=1000";
 const TT_IMG = "https://images.unsplash.com/photo-1683056255281-e52a141924f0?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200";
-const PRIVATE_ZOOM_IMG = "https://static.prod-images.emergentagent.com/jobs/8720569b-f17d-4a0e-b4b8-46a89a63a48b/images/db77ff33d94045dab4b3a99258da5ac82bff158aa29ccef15cccb2b778d9f644.jpeg";
-const TONY_IMG = "https://static.prod-images.emergentagent.com/jobs/8720569b-f17d-4a0e-b4b8-46a89a63a48b/images/fc9d613a21e7e4a3f4b3eb8ba5e57c353b2b0281cb39843cf41534cb323c5d98.jpeg";
+const PRIVATE_ZOOM_IMG = "/brand/seed/private-zoom.jpeg";
+const TONY_IMG = "/brand/seed/tony.jpeg";
 
 function isStandalone() {
   return typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true);

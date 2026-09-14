@@ -1,0 +1,25 @@
+{
+  "summary": "Comprehensive test of Tony Yoga admin pop-up + App Store/Play link controls, PWA, Capacitor native override, and local /brand/seed image serving after VPS-hardening import. 13/13 backend pytest tests passed and 14/14 frontend flows passed. All requirements verified: admin can save/stop/customize the pop-up; App Store URL becomes a real <a> link on public homepage; Google Play link is real and points to com.tonyoga.app; validation rejects javascript:/wrong-host/http store URLs; PWA manifest+sw served; ?native=1 skips landing; mobile viewport has no overflow and bottom-nav present; /brand/seed/ images all load (naturalWidth>0). Settings restored to defaults (app_store_url='', popup_enabled=true, mode=app, delay=30) after tests.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_popup_and_store_links.py",
+    "/app/test_reports/pytest/popup_store_links.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "settings.py PUBLIC_FIELDS has 'social_whatsapp' listed twice (line 226 and 235) — harmless (set semantics for iteration keeps single entry) but should be de-duplicated for cleanliness.",
+    "google_play_url validation blocks port other than 443/None but rejects any URL containing user/pass — matches spec; consider allowing localized hosts (play.google.com/store already covers ?hl=en_IN via query, so fine).",
+    "AppDownloadsSettings.jsx: on save it only sends form KEYS subset — but the client sends the full form each time, which is fine (backend ignores unknown keys and preserves masked secrets). No fix needed.",
+    "Admin route uses single /admin page with ?tab= query param; document this pattern so future testers use /admin?tab=downloads directly."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_popup_and_store_links.py"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "100% (14/14)"},
+  "test_credentials": "Admin tony@tonyyoga.com / TonyYoga2026! ; Student student@demo.com / Student2026!",
+  "seed_data_creation": "None (used existing seeded data). Temp changes to settings reverted to defaults.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Admin settings live at /admin?tab=downloads (single-page admin with ?tab= query param — do NOT try /admin/settings). Public pop-up settings served from GET /api/settings/public. Settings validation for app_store_url requires https://apps.apple.com/... (host, scheme, no port other than 443, no auth). PWA files at /manifest.json and /sw.js. ?native=1 in URL sets sessionStorage flag and skips marketing landing to /home (or /login if unauth). Local seed images live under /brand/seed/*."
+}

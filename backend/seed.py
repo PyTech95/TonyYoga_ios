@@ -132,9 +132,9 @@ async def seed():
         # No destructive deletes: existing content is always preserved on startup/deploy.
         if not await db.programs.find_one({"title": "Core 26+"}):
             COVERS = {
-                "core26": "https://customer-assets.emergentagent.com/job_yogasage/artifacts/ayolpmc7_3.png",
-                "core40": "https://customer-assets.emergentagent.com/job_yogasage/artifacts/lphigt25_71.jpg",
-                "core84": "https://customer-assets.emergentagent.com/job_yogasage/artifacts/xy66ku8a_25.png",
+                "core26": "/brand/seed/core26.png",
+                "core40": "/brand/seed/core40.jpg",
+                "core84": "/brand/seed/core84.png",
             }
             DEMO_VIDEO = "https://assets.mixkit.co/videos/preview/mixkit-young-woman-doing-yoga-on-a-rooftop-4849-large.mp4"
 

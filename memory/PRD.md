@@ -334,3 +334,11 @@ insatall leaft side all the menu to edid pages and manage". User approved procee
 - Smoke test PASS: import server clean; /api/health ok (seeded users=3, programs=3, class_templates=4, class_instances=28, products=5); external admin login (role=admin, token) OK; public /api/programs read=3; landing page renders.
 - deployment_agent flagged CORS wildcard preference; resolved by keeping CORS LOCKED per user requirement and adding production origin (not switching to *).
 - Third-party integrations (Stripe live, PayPal, Printful, Zoom, OpenAI, VAPID, email/WhatsApp) NOT configured — inactive until keys added in Admin/env. Core app works without them.
+
+## VPS independence + admin pop-up/store links — 2026-06 (E1)
+- Google Play link set (com.tonyoga.app) as default + persisted; App Store link left empty for owner to add later via Admin → Settings → "Pop-up & app downloads" (field already exists: settings-app_store_url / settings-google_play_url).
+- Pop-up is fully admin-controlled (verified): master on/off (stop), timing (10s/30s/1min/exit), and mode = App download OR fully custom offer (own eyebrow/title/description/CTA/image/expiry). "Add any pop-up" = custom mode.
+- Emergent runtime dependency REMOVED: no @emergentbase/* npm packages, no emergentintegrations, no emergent refs in runtime code. 5 Emergent-CDN images (2 homepage in Marketing.jsx + 3 program covers in seed.py) downloaded into frontend/public/brand/seed/ and referenced locally; existing DB program/video covers (71 docs) updated to /brand/seed/ paths. All load (naturalWidth>0).
+- Web + mobile verified: responsive at 390px (no overflow, bottom nav), PWA (/manifest.json + /sw.js served), Capacitor native detection (?native=1 skips landing → /home or /login).
+- Added /app/VPS_DEPLOYMENT.md: full self-host guide (env vars, MongoDB, uvicorn, yarn build, nginx /api proxy, PWA + Capacitor native, admin runtime controls). CORS stays locked (no wildcard) — owner adds real origins.
+- Testing agent iteration_11: 13/13 backend + 14/14 frontend passed, no issues. URL-validation rejects javascript:/wrong-host store links (422). Settings restored to defaults after tests.
