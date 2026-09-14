@@ -153,7 +153,7 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # ---- AI assistant (homepage chat + voice) ----
     "assistant_enabled": True,
     "app_store_url": "",
-    "google_play_url": "",
+    "google_play_url": "https://play.google.com/store/apps/details?id=com.tonyoga.app&hl=en_IN",
     # ---- Download / offer pop-up (admin-controlled) ----
     "download_popup_enabled": True,       # master on/off for the pop-up
     "download_popup_mode": "app",         # "app" (store buttons) | "custom" (your own offer)
