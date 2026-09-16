@@ -28,13 +28,85 @@ jobs:
 
     steps:
       # =========================================================
-      # CHECKOUT
+      # 1. CHECKOUT
       # =========================================================
       - name: Checkout repository
         uses: actions/checkout@v4
 
       # =========================================================
-      # NODE
+      # 2. SELECT XCODE 26+
+      # Apple currently requires iOS 26 SDK or newer.
+      # =========================================================
+      - name: Select Xcode 26 or newer
+        shell: bash
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "Installed Xcode applications"
+          echo "========================================"
+
+          ls -1d /Applications/Xcode*.app || true
+
+          XCODE_PATH=""
+
+          for candidate in \
+            /Applications/Xcode_26*.app \
+            /Applications/Xcode-26*.app \
+            /Applications/Xcode26*.app
+          do
+            if [ -d "$candidate" ]; then
+              XCODE_PATH="$candidate"
+            fi
+          done
+
+          if [ -z "$XCODE_PATH" ]; then
+            echo ""
+            echo "ERROR: Xcode 26 or newer is not installed on this runner."
+            echo "Apple requires builds made with the iOS 26 SDK or later."
+            echo ""
+            echo "Available Xcode installations:"
+            ls -1d /Applications/Xcode*.app || true
+            exit 1
+          fi
+
+          echo ""
+          echo "Selecting:"
+          echo "$XCODE_PATH"
+
+          sudo xcode-select \
+            -s "$XCODE_PATH/Contents/Developer"
+
+          echo ""
+          echo "========================================"
+          echo "Selected Xcode"
+          echo "========================================"
+
+          xcodebuild -version
+
+          echo ""
+          echo "========================================"
+          echo "Available SDKs"
+          echo "========================================"
+
+          xcodebuild -showsdks
+
+          XCODE_MAJOR=$(
+            xcodebuild -version |
+            awk '/Xcode/ {print $2}' |
+            cut -d. -f1
+          )
+
+          if [ "$XCODE_MAJOR" -lt 26 ]; then
+            echo "ERROR: Selected Xcode is older than Xcode 26."
+            exit 1
+          fi
+
+          echo ""
+          echo "Xcode 26+ verified successfully."
+
+      # =========================================================
+      # 3. SETUP NODE
       # =========================================================
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -44,13 +116,13 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       # =========================================================
-      # INSTALL DEPENDENCIES
+      # 4. INSTALL DEPENDENCIES
       # =========================================================
       - name: Install frontend dependencies
         run: npm ci --legacy-peer-deps
 
       # =========================================================
-      # BUILD REACT
+      # 5. BUILD REACT
       # =========================================================
       - name: Build React app
         env:
@@ -58,46 +130,52 @@ jobs:
         run: npm run build
 
       # =========================================================
-      # CAPACITOR SYNC
+      # 6. CAPACITOR SYNC
       # =========================================================
       - name: Sync Capacitor iOS
         run: npx cap sync ios
 
       # =========================================================
-      # DECODE APPLE DISTRIBUTION CERTIFICATE
+      # 7. DECODE DISTRIBUTION CERTIFICATE
       # =========================================================
       - name: Decode Apple Distribution certificate
         shell: bash
         run: |
+          set -e
+
           echo "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" \
             | base64 --decode \
             > "$RUNNER_TEMP/certificate.p12"
 
           if [ ! -s "$RUNNER_TEMP/certificate.p12" ]; then
-            echo "ERROR: Distribution certificate could not be decoded."
+            echo "ERROR: certificate.p12 is empty."
             exit 1
           fi
 
-          echo "Distribution certificate decoded."
+          echo "Apple Distribution certificate decoded."
 
       # =========================================================
-      # DECODE + INSTALL PROVISIONING PROFILE
+      # 8. PROVISIONING PROFILE
       # =========================================================
       - name: Decode and install provisioning profile
         shell: bash
         run: |
-          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          set -e
+
+          mkdir -p \
+            "$HOME/Library/MobileDevice/Provisioning Profiles"
 
           echo "${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}" \
             | base64 --decode \
             > "$RUNNER_TEMP/profile.mobileprovision"
 
           if [ ! -s "$RUNNER_TEMP/profile.mobileprovision" ]; then
-            echo "ERROR: Provisioning profile could not be decoded."
+            echo "ERROR: Provisioning profile is empty."
             exit 1
           fi
 
-          security cms -D \
+          security cms \
+            -D \
             -i "$RUNNER_TEMP/profile.mobileprovision" \
             > "$RUNNER_TEMP/profile.plist"
 
@@ -124,11 +202,13 @@ jobs:
           echo "Profile UUID: $PROFILE_UUID"
 
       # =========================================================
-      # CREATE TEMP KEYCHAIN + IMPORT P12
+      # 9. CREATE KEYCHAIN
       # =========================================================
       - name: Create temporary keychain and import certificate
         shell: bash
         run: |
+          set -e
+
           security create-keychain \
             -p "${{ secrets.KEYCHAIN_PASSWORD }}" \
             "$KEYCHAIN_PATH"
@@ -159,17 +239,21 @@ jobs:
             -d user \
             -s "$KEYCHAIN_PATH" login.keychain-db
 
+          echo "Signing identities:"
+
           security find-identity \
             -v \
             -p codesigning \
             "$KEYCHAIN_PATH"
 
       # =========================================================
-      # FIND SIGNING IDENTITY
+      # 10. FIND SIGNING IDENTITY
       # =========================================================
       - name: Read Apple Distribution signing identity
         shell: bash
         run: |
+          set -e
+
           SIGNING_IDENTITY=$(
             security find-identity \
               -v \
@@ -181,19 +265,24 @@ jobs:
           )
 
           if [ -z "$SIGNING_IDENTITY" ]; then
-            echo "ERROR: Apple Distribution signing identity not found."
+            echo "ERROR: Apple Distribution identity not found."
             exit 1
           fi
 
-          echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
-          echo "Signing identity: $SIGNING_IDENTITY"
+          echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" \
+            >> "$GITHUB_ENV"
+
+          echo "Using:"
+          echo "$SIGNING_IDENTITY"
 
       # =========================================================
-      # VERIFY PROFILE
+      # 11. VERIFY PROVISIONING PROFILE
       # =========================================================
       - name: Verify TonYoga provisioning profile
         shell: bash
         run: |
+          set -e
+
           APP_IDENTIFIER=$(
             /usr/libexec/PlistBuddy \
               -c "Print Entitlements:application-identifier" \
@@ -202,22 +291,27 @@ jobs:
 
           EXPECTED_IDENTIFIER="$TEAM_ID.$APP_BUNDLE_ID"
 
-          echo "Profile:  $APP_IDENTIFIER"
-          echo "Expected: $EXPECTED_IDENTIFIER"
+          echo "Profile identifier:"
+          echo "$APP_IDENTIFIER"
 
-          if [[ "$APP_IDENTIFIER" != "$EXPECTED_IDENTIFIER" ]]; then
-            echo "ERROR: Provisioning profile does not match TonYoga."
+          echo "Expected:"
+          echo "$EXPECTED_IDENTIFIER"
+
+          if [ "$APP_IDENTIFIER" != "$EXPECTED_IDENTIFIER" ]; then
+            echo "ERROR: Wrong provisioning profile."
             exit 1
           fi
 
-          echo "Provisioning profile verified."
+          echo "TonYoga provisioning profile verified."
 
       # =========================================================
-      # VERSION
+      # 12. SET VERSION / BUILD
       # =========================================================
       - name: Set iOS version and build number
         shell: bash
         run: |
+          set -e
+
           /usr/libexec/PlistBuddy \
             -c "Set :CFBundleShortVersionString 1.0" \
             ios/App/App/Info.plist || true
@@ -230,15 +324,49 @@ jobs:
           echo "Build: ${GITHUB_RUN_NUMBER}"
 
       # =========================================================
-      # ARCHIVE
+      # 13. VERIFY XCODE AGAIN BEFORE ARCHIVE
+      # =========================================================
+      - name: Verify build SDK
+        shell: bash
+        run: |
+          set -e
+
+          echo "Xcode:"
+          xcodebuild -version
+
+          echo ""
+          echo "SDK path:"
+          xcrun --sdk iphoneos --show-sdk-path
+
+          echo ""
+          echo "SDK version:"
+          xcrun --sdk iphoneos --show-sdk-version
+
+          SDK_MAJOR=$(
+            xcrun --sdk iphoneos --show-sdk-version |
+            cut -d. -f1
+          )
+
+          if [ "$SDK_MAJOR" -lt 26 ]; then
+            echo "ERROR: iOS SDK 26+ is required."
+            exit 1
+          fi
+
+          echo "iOS SDK 26+ verified."
+
+      # =========================================================
+      # 14. ARCHIVE
       # =========================================================
       - name: Archive TonYoga
         shell: bash
         run: |
+          set -e
+
           xcodebuild \
             -project "$PROJECT_PATH" \
             -scheme "$SCHEME" \
             -configuration Release \
+            -sdk iphoneos \
             -destination "generic/platform=iOS" \
             -archivePath "$ARCHIVE_PATH" \
             DEVELOPMENT_TEAM="$TEAM_ID" \
@@ -249,11 +377,13 @@ jobs:
             clean archive
 
       # =========================================================
-      # EXPORT OPTIONS
+      # 15. EXPORT OPTIONS
       # =========================================================
       - name: Create App Store export options
         shell: bash
         run: |
+          set -e
+
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -291,11 +421,13 @@ jobs:
           cat "$RUNNER_TEMP/ExportOptions.plist"
 
       # =========================================================
-      # EXPORT IPA
+      # 16. EXPORT IPA
       # =========================================================
       - name: Export signed IPA
         shell: bash
         run: |
+          set -e
+
           mkdir -p "$EXPORT_PATH"
 
           xcodebuild \
@@ -304,30 +436,38 @@ jobs:
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
+          echo "Exported files:"
           ls -lah "$EXPORT_PATH"
 
-          IPA_PATH=$(find "$EXPORT_PATH" -name "*.ipa" -print -quit)
+          IPA_PATH=$(
+            find "$EXPORT_PATH" \
+              -name "*.ipa" \
+              -print \
+              -quit
+          )
 
           if [ -z "$IPA_PATH" ]; then
-            echo "ERROR: IPA was not generated."
+            echo "ERROR: IPA not generated."
             exit 1
           fi
 
           echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
-          echo "IPA generated:"
+          echo "IPA:"
           echo "$IPA_PATH"
 
       # =========================================================
-      # APP STORE CONNECT API KEY
+      # 17. INSTALL APP STORE CONNECT API KEY
       #
-      # APP_STORE_CONNECT_API_KEY_P8 now contains BASE64,
-      # not raw PEM text.
+      # APP_STORE_CONNECT_API_KEY_P8 contains BASE64 encoded P8.
       # =========================================================
       - name: Install App Store Connect API key
         shell: bash
         run: |
-          mkdir -p "$HOME/.appstoreconnect/private_keys"
+          set -e
+
+          mkdir -p \
+            "$HOME/.appstoreconnect/private_keys"
 
           API_KEY_FILE="$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8"
 
@@ -338,33 +478,41 @@ jobs:
           chmod 600 "$API_KEY_FILE"
 
           if [ ! -s "$API_KEY_FILE" ]; then
-            echo "ERROR: API private key file is empty."
+            echo "ERROR: P8 key is empty."
             exit 1
           fi
 
-          FIRST_LINE=$(head -n 1 "$API_KEY_FILE")
-          LAST_LINE=$(tail -n 1 "$API_KEY_FILE")
+          FIRST_LINE=$(
+            head -n 1 "$API_KEY_FILE" |
+            tr -d '\r'
+          )
+
+          LAST_LINE=$(
+            tail -n 1 "$API_KEY_FILE" |
+            tr -d '\r'
+          )
 
           if [ "$FIRST_LINE" != "-----BEGIN PRIVATE KEY-----" ]; then
-            echo "ERROR: Invalid P8 private key header."
+            echo "ERROR: Invalid P8 header."
             exit 1
           fi
 
           if [ "$LAST_LINE" != "-----END PRIVATE KEY-----" ]; then
-            echo "ERROR: Invalid P8 private key footer."
+            echo "ERROR: Invalid P8 footer."
             exit 1
           fi
 
-          echo "API private key decoded successfully."
-          echo "Key ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}"
+          echo "App Store Connect API key ready."
 
       # =========================================================
-      # VALIDATE APP STORE CONNECT AUTH
+      # 18. VALIDATE APP STORE CONNECT AUTH
       # =========================================================
       - name: Validate App Store Connect authentication
         shell: bash
         run: |
-          echo "Testing App Store Connect API authentication..."
+          set -e
+
+          echo "Testing App Store Connect API..."
 
           xcrun altool \
             --list-providers \
@@ -372,13 +520,15 @@ jobs:
             --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
 
       # =========================================================
-      # UPLOAD IPA
+      # 19. UPLOAD IPA
       # =========================================================
       - name: Upload IPA to App Store Connect
         shell: bash
         run: |
+          set -e
+
           if [ ! -f "$IPA_PATH" ]; then
-            echo "ERROR: IPA not found."
+            echo "ERROR: IPA file not found."
             exit 1
           fi
 
@@ -393,7 +543,7 @@ jobs:
             --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
 
       # =========================================================
-      # SAVE IPA ARTIFACT
+      # 20. SAVE IPA ARTIFACT
       # =========================================================
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
@@ -403,17 +553,23 @@ jobs:
           if-no-files-found: error
 
       # =========================================================
-      # CLEANUP
+      # 21. CLEANUP
       # =========================================================
       - name: Cleanup signing files
         if: always()
         shell: bash
         run: |
-          security delete-keychain "$KEYCHAIN_PATH" || true
+          security delete-keychain \
+            "$KEYCHAIN_PATH" || true
 
-          rm -f "$RUNNER_TEMP/certificate.p12"
-          rm -f "$RUNNER_TEMP/profile.mobileprovision"
-          rm -f "$RUNNER_TEMP/profile.plist"
+          rm -f \
+            "$RUNNER_TEMP/certificate.p12"
+
+          rm -f \
+            "$RUNNER_TEMP/profile.mobileprovision"
+
+          rm -f \
+            "$RUNNER_TEMP/profile.plist"
 
           rm -f \
             "$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8"
