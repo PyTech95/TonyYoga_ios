@@ -24,7 +24,7 @@ jobs:
       PROJECT_PATH: ios/App/App.xcodeproj
       ARCHIVE_PATH: ${{ github.workspace }}/TonYoga.xcarchive
       EXPORT_PATH: ${{ github.workspace }}/export
-      KEYCHAIN_PATH: ${{ runner.temp }}/app-signing.keychain-db
+      KEYCHAIN_PATH: /Users/runner/app-signing.keychain-db
 
     steps:
       - name: Checkout
