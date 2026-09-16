@@ -1,0 +1,232 @@
+name: TonYoga iOS TestFlight
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "frontend/**"
+      - ".github/workflows/ios-testflight.yml"
+
+jobs:
+  build-and-upload:
+    runs-on: macos-15
+
+    defaults:
+      run:
+        working-directory: frontend
+
+    env:
+      APP_BUNDLE_ID: com.tonyoga.app
+      TEAM_ID: B38XS68W4W
+      SCHEME: App
+      PROJECT_PATH: ios/App/App.xcodeproj
+      ARCHIVE_PATH: ${{ github.workspace }}/TonYoga.xcarchive
+      EXPORT_PATH: ${{ github.workspace }}/export
+      KEYCHAIN_PATH: ${{ runner.temp }}/app-signing.keychain-db
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend dependencies
+        run: npm ci --legacy-peer-deps
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Sync Capacitor iOS
+        run: npx cap sync ios
+
+      - name: Decode signing certificate
+        shell: bash
+        run: |
+          echo "${{ secrets.APPLE_CERTIFICATE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/certificate.p12"
+
+      - name: Decode provisioning profile
+        shell: bash
+        run: |
+          mkdir -p "$HOME/Library/MobileDevice/Provisioning Profiles"
+          echo "${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}" | base64 --decode > "$RUNNER_TEMP/profile.mobileprovision"
+
+          security cms -D -i "$RUNNER_TEMP/profile.mobileprovision" > "$RUNNER_TEMP/profile.plist"
+
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" "$RUNNER_TEMP/profile.plist")
+          PROFILE_NAME=$(/usr/libexec/PlistBuddy -c "Print Name" "$RUNNER_TEMP/profile.plist")
+
+          cp "$RUNNER_TEMP/profile.mobileprovision" "$HOME/Library/MobileDevice/Provisioning Profiles/$PROFILE_UUID.mobileprovision"
+
+          echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+          echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
+
+          echo "Provisioning profile: $PROFILE_NAME"
+          echo "UUID: $PROFILE_UUID"
+
+      - name: Create temporary keychain and import certificate
+        shell: bash
+        run: |
+          security create-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
+
+          security import "$RUNNER_TEMP/certificate.p12" \
+            -P "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" \
+            -A \
+            -t cert \
+            -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "${{ secrets.KEYCHAIN_PASSWORD }}" \
+            "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          security find-identity -v -p codesigning "$KEYCHAIN_PATH"
+
+      - name: Read signing certificate identity
+        shell: bash
+        run: |
+          SIGNING_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep "Apple Distribution" \
+            | head -1 \
+            | sed -E 's/.*"(.+)"/\1/')
+
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "Apple Distribution signing identity not found"
+            exit 1
+          fi
+
+          echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "Using signing identity: $SIGNING_IDENTITY"
+
+      - name: Verify provisioning profile matches TonYoga
+        shell: bash
+        run: |
+          APP_IDENTIFIER=$(/usr/libexec/PlistBuddy \
+            -c "Print Entitlements:application-identifier" \
+            "$RUNNER_TEMP/profile.plist")
+
+          echo "Profile application identifier: $APP_IDENTIFIER"
+
+          if [[ "$APP_IDENTIFIER" != "$TEAM_ID.$APP_BUNDLE_ID" ]]; then
+            echo "Provisioning profile does not match $APP_BUNDLE_ID"
+            exit 1
+          fi
+
+      - name: Set iOS version
+        shell: bash
+        run: |
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString 1.0" ios/App/App/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" ios/App/App/Info.plist || true
+
+      - name: Archive TonYoga
+        shell: bash
+        run: |
+          xcodebuild \
+            -project "$PROJECT_PATH" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -archivePath "$ARCHIVE_PATH" \
+            DEVELOPMENT_TEAM="$TEAM_ID" \
+            PRODUCT_BUNDLE_IDENTIFIER="$APP_BUNDLE_ID" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY="$SIGNING_IDENTITY" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROFILE_NAME" \
+            clean archive
+
+      - name: Create export options
+        shell: bash
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<EOF
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store-connect</string>
+
+            <key>teamID</key>
+            <string>${TEAM_ID}</string>
+
+            <key>signingStyle</key>
+            <string>manual</string>
+
+            <key>signingCertificate</key>
+            <string>Apple Distribution</string>
+
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>${APP_BUNDLE_ID}</key>
+              <string>${PROFILE_NAME}</string>
+            </dict>
+
+            <key>uploadSymbols</key>
+            <true/>
+
+            <key>manageAppVersionAndBuildNumber</key>
+            <false/>
+          </dict>
+          </plist>
+          EOF
+
+      - name: Export IPA
+        shell: bash
+        run: |
+          mkdir -p "$EXPORT_PATH"
+
+          xcodebuild \
+            -exportArchive \
+            -archivePath "$ARCHIVE_PATH" \
+            -exportPath "$EXPORT_PATH" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
+
+          ls -lah "$EXPORT_PATH"
+
+      - name: Save App Store Connect API key
+        shell: bash
+        run: |
+          mkdir -p "$HOME/.appstoreconnect/private_keys"
+
+          cat > "$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8" <<'EOF'
+          ${{ secrets.APP_STORE_CONNECT_API_KEY_P8 }}
+          EOF
+
+          chmod 600 "$HOME/.appstoreconnect/private_keys/AuthKey_${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}.p8"
+
+      - name: Upload IPA to App Store Connect
+        shell: bash
+        run: |
+          IPA_PATH=$(find "$EXPORT_PATH" -name "*.ipa" -print -quit)
+
+          if [ -z "$IPA_PATH" ]; then
+            echo "IPA not found"
+            exit 1
+          fi
+
+          echo "Uploading: $IPA_PATH"
+
+          xcrun altool \
+            --upload-app \
+            -f "$IPA_PATH" \
+            -t ios \
+            --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
+            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: TonYoga-iOS-${{ github.run_number }}
+          path: export/*.ipa
+          if-no-files-found: error
