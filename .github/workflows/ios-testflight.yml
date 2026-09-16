@@ -1,4 +1,4 @@
- 	name: TonYoga iOS TestFlight
+name: TonYoga iOS TestFlight
 
 on:
   workflow_dispatch:
@@ -27,7 +27,6 @@ jobs:
       KEYCHAIN_PATH: /Users/runner/app-signing.keychain-db
 
     steps:
-
       # =========================================================
       # CHECKOUT
       # =========================================================
@@ -79,7 +78,7 @@ jobs:
             exit 1
           fi
 
-          echo "Distribution certificate decoded successfully."
+          echo "Distribution certificate decoded."
 
       # =========================================================
       # DECODE + INSTALL PROVISIONING PROFILE
@@ -121,11 +120,11 @@ jobs:
           echo "PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
           echo "PROFILE_NAME=$PROFILE_NAME" >> "$GITHUB_ENV"
 
-          echo "Provisioning Profile Name: $PROFILE_NAME"
-          echo "Provisioning Profile UUID: $PROFILE_UUID"
+          echo "Profile Name: $PROFILE_NAME"
+          echo "Profile UUID: $PROFILE_UUID"
 
       # =========================================================
-      # CREATE TEMPORARY KEYCHAIN
+      # CREATE TEMP KEYCHAIN + IMPORT P12
       # =========================================================
       - name: Create temporary keychain and import certificate
         shell: bash
@@ -160,15 +159,13 @@ jobs:
             -d user \
             -s "$KEYCHAIN_PATH" login.keychain-db
 
-          echo "Available signing identities:"
-
           security find-identity \
             -v \
             -p codesigning \
             "$KEYCHAIN_PATH"
 
       # =========================================================
-      # FIND DISTRIBUTION SIGNING IDENTITY
+      # FIND SIGNING IDENTITY
       # =========================================================
       - name: Read Apple Distribution signing identity
         shell: bash
@@ -189,12 +186,10 @@ jobs:
           fi
 
           echo "SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
-
-          echo "Using signing identity:"
-          echo "$SIGNING_IDENTITY"
+          echo "Signing identity: $SIGNING_IDENTITY"
 
       # =========================================================
-      # VERIFY PROFILE MATCHES TONYOGA
+      # VERIFY PROFILE
       # =========================================================
       - name: Verify TonYoga provisioning profile
         shell: bash
@@ -207,21 +202,18 @@ jobs:
 
           EXPECTED_IDENTIFIER="$TEAM_ID.$APP_BUNDLE_ID"
 
-          echo "Provisioning Profile Identifier:"
-          echo "$APP_IDENTIFIER"
-
-          echo "Expected Identifier:"
-          echo "$EXPECTED_IDENTIFIER"
+          echo "Profile:  $APP_IDENTIFIER"
+          echo "Expected: $EXPECTED_IDENTIFIER"
 
           if [[ "$APP_IDENTIFIER" != "$EXPECTED_IDENTIFIER" ]]; then
             echo "ERROR: Provisioning profile does not match TonYoga."
             exit 1
           fi
 
-          echo "Provisioning profile verified successfully."
+          echo "Provisioning profile verified."
 
       # =========================================================
-      # VERSION + BUILD NUMBER
+      # VERSION
       # =========================================================
       - name: Set iOS version and build number
         shell: bash
@@ -234,11 +226,11 @@ jobs:
             -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}" \
             ios/App/App/Info.plist || true
 
-          echo "iOS Version: 1.0"
-          echo "iOS Build Number: ${GITHUB_RUN_NUMBER}"
+          echo "Version: 1.0"
+          echo "Build: ${GITHUB_RUN_NUMBER}"
 
       # =========================================================
-      # ARCHIVE APP
+      # ARCHIVE
       # =========================================================
       - name: Archive TonYoga
         shell: bash
@@ -257,7 +249,7 @@ jobs:
             clean archive
 
       # =========================================================
-      # CREATE EXPORT OPTIONS
+      # EXPORT OPTIONS
       # =========================================================
       - name: Create App Store export options
         shell: bash
@@ -296,11 +288,10 @@ jobs:
           </plist>
           EOF
 
-          echo "ExportOptions.plist:"
           cat "$RUNNER_TEMP/ExportOptions.plist"
 
       # =========================================================
-      # EXPORT SIGNED IPA
+      # EXPORT IPA
       # =========================================================
       - name: Export signed IPA
         shell: bash
@@ -313,7 +304,6 @@ jobs:
             -exportPath "$EXPORT_PATH" \
             -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist"
 
-          echo "Export directory:"
           ls -lah "$EXPORT_PATH"
 
           IPA_PATH=$(find "$EXPORT_PATH" -name "*.ipa" -print -quit)
@@ -325,14 +315,14 @@ jobs:
 
           echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
 
-          echo "IPA generated successfully:"
+          echo "IPA generated:"
           echo "$IPA_PATH"
 
       # =========================================================
-      # INSTALL APP STORE CONNECT API KEY
+      # APP STORE CONNECT API KEY
       #
-      # APP_STORE_CONNECT_API_KEY_P8 must contain BASE64 encoded
-      # AuthKey_XL98NJ5DXP.p8
+      # APP_STORE_CONNECT_API_KEY_P8 now contains BASE64,
+      # not raw PEM text.
       # =========================================================
       - name: Install App Store Connect API key
         shell: bash
@@ -352,8 +342,8 @@ jobs:
             exit 1
           fi
 
-          FIRST_LINE=$(head -n 1 "$API_KEY_FILE" | tr -d '\r')
-          LAST_LINE=$(tail -n 1 "$API_KEY_FILE" | tr -d '\r')
+          FIRST_LINE=$(head -n 1 "$API_KEY_FILE")
+          LAST_LINE=$(tail -n 1 "$API_KEY_FILE")
 
           if [ "$FIRST_LINE" != "-----BEGIN PRIVATE KEY-----" ]; then
             echo "ERROR: Invalid P8 private key header."
@@ -365,33 +355,24 @@ jobs:
             exit 1
           fi
 
-          echo "API_PRIVATE_KEY_PATH=$API_KEY_FILE" >> "$GITHUB_ENV"
-
-          echo "App Store Connect API private key installed."
+          echo "API private key decoded successfully."
           echo "Key ID: ${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}"
 
       # =========================================================
-      # VALIDATE API KEY
+      # VALIDATE APP STORE CONNECT AUTH
       # =========================================================
       - name: Validate App Store Connect authentication
         shell: bash
         run: |
-          echo "Testing App Store Connect authentication..."
-
-          echo "Key ID:"
-          echo "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}"
-
-          echo "P8 path:"
-          echo "$API_PRIVATE_KEY_PATH"
+          echo "Testing App Store Connect API authentication..."
 
           xcrun altool \
             --list-providers \
             --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
-            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" \
-            --p8-file-path "$API_PRIVATE_KEY_PATH"
+            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
 
       # =========================================================
-      # UPLOAD IPA TO APP STORE CONNECT / TESTFLIGHT
+      # UPLOAD IPA
       # =========================================================
       - name: Upload IPA to App Store Connect
         shell: bash
@@ -401,7 +382,7 @@ jobs:
             exit 1
           fi
 
-          echo "Uploading TonYoga IPA:"
+          echo "Uploading:"
           echo "$IPA_PATH"
 
           xcrun altool \
@@ -409,11 +390,10 @@ jobs:
             -f "$IPA_PATH" \
             -t ios \
             --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
-            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}" \
-            --p8-file-path "$API_PRIVATE_KEY_PATH"
+            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
 
       # =========================================================
-      # SAVE IPA AS GITHUB ARTIFACT
+      # SAVE IPA ARTIFACT
       # =========================================================
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
