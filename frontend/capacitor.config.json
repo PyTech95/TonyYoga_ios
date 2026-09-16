@@ -1,6 +1,6 @@
 {
-  "appId": "com.tonysanchezyoga.app",
-  "appName": "Tony Sanchez Yoga",
+  "appId": "com.tonyoga.app",
+  "appName": "TonYoga",
   "webDir": "build",
   "backgroundColor": "#FAFAF7",
   "server": {
@@ -14,6 +14,10 @@
       "showSpinner": false
     }
   },
-  "ios": { "contentInset": "always" },
-  "android": { "allowMixedContent": false }
+  "ios": {
+    "contentInset": "always"
+  },
+  "android": {
+    "allowMixedContent": false
+  }
 }
