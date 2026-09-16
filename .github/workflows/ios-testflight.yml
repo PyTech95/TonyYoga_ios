@@ -42,7 +42,7 @@ jobs:
 
       - name: Build React app
         env:
-        CI: "false"
+          CI: "false"
         run: npm run build
 
       - name: Sync Capacitor iOS
