@@ -504,21 +504,7 @@ jobs:
 
           echo "App Store Connect API key ready."
 
-      # =========================================================
-      # 18. VALIDATE APP STORE CONNECT AUTH
-      # =========================================================
-      - name: Validate App Store Connect authentication
-        shell: bash
-        run: |
-          set -e
-
-          echo "Testing App Store Connect API..."
-
-          xcrun altool \
-            --list-providers \
-            --apiKey "${{ secrets.APP_STORE_CONNECT_API_KEY_ID }}" \
-            --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
-
+      
       # =========================================================
       # 19. UPLOAD IPA
       # =========================================================
