@@ -27,6 +27,7 @@ jobs:
       KEYCHAIN_PATH: /Users/runner/app-signing.keychain-db
 
     steps:
+
       # =========================================================
       # 1. CHECKOUT
       # =========================================================
@@ -35,7 +36,6 @@ jobs:
 
       # =========================================================
       # 2. SELECT XCODE 26+
-      # Apple currently requires iOS 26 SDK or newer.
       # =========================================================
       - name: Select Xcode 26 or newer
         shell: bash
@@ -122,21 +122,86 @@ jobs:
         run: npm ci --legacy-peer-deps
 
       # =========================================================
-      # 5. BUILD REACT
+      # 5. BUILD REACT WITH PRODUCTION API
       # =========================================================
       - name: Build React app
         env:
           CI: "false"
-        run: npm run build
+          REACT_APP_BACKEND_URL: "https://tonyoga.com"
+        run: |
+          set -e
+
+          echo "========================================"
+          echo "Building TonYoga iOS"
+          echo "========================================"
+          echo "Production backend:"
+          echo "$REACT_APP_BACKEND_URL"
+
+          npm run build
 
       # =========================================================
-      # 6. CAPACITOR SYNC
+      # 6. VERIFY PRODUCTION API IN COMPILED BUILD
+      # =========================================================
+      - name: Verify production API URL in React build
+        shell: bash
+        run: |
+          set -e
+
+          echo "Checking compiled React bundle..."
+          echo "Expected backend: https://tonyoga.com"
+
+          if grep -R -q "https://tonyoga.com" build/static/js; then
+            echo "SUCCESS: Production backend URL found."
+          else
+            echo "ERROR: Production backend URL missing from compiled build."
+            exit 1
+          fi
+
+          if grep -R -q "undefined/api" build/static/js; then
+            echo "ERROR: undefined/api found in compiled build."
+            exit 1
+          fi
+
+          echo "React production API configuration verified."
+
+      # =========================================================
+      # 7. CAPACITOR SYNC
       # =========================================================
       - name: Sync Capacitor iOS
-        run: npx cap sync ios
+        run: |
+          set -e
+
+          npx cap sync ios
+
+          echo ""
+          echo "Capacitor iOS sync completed."
 
       # =========================================================
-      # 7. DECODE DISTRIBUTION CERTIFICATE
+      # 8. VERIFY API INSIDE IOS WEB ASSETS
+      # =========================================================
+      - name: Verify production API in iOS assets
+        shell: bash
+        run: |
+          set -e
+
+          echo "Checking Capacitor iOS web assets..."
+
+          if grep -R -q "https://tonyoga.com" ios/App/App/public; then
+            echo "SUCCESS: Production backend URL exists in iOS assets."
+          else
+            echo "ERROR: Production backend URL missing from iOS assets."
+            exit 1
+          fi
+
+          if grep -R -q "undefined/api" ios/App/App/public; then
+            echo "ERROR: undefined/api found inside iOS assets."
+            exit 1
+          fi
+
+          echo "iOS production API configuration verified."
+
+      # =========================================================
+      # 9. DECODE DISTRIBUTION CERTIFICATE
       # =========================================================
       - name: Decode Apple Distribution certificate
         shell: bash
@@ -155,7 +220,7 @@ jobs:
           echo "Apple Distribution certificate decoded."
 
       # =========================================================
-      # 8. PROVISIONING PROFILE
+      # 10. PROVISIONING PROFILE
       # =========================================================
       - name: Decode and install provisioning profile
         shell: bash
@@ -202,7 +267,7 @@ jobs:
           echo "Profile UUID: $PROFILE_UUID"
 
       # =========================================================
-      # 9. CREATE KEYCHAIN
+      # 11. CREATE KEYCHAIN
       # =========================================================
       - name: Create temporary keychain and import certificate
         shell: bash
@@ -247,7 +312,7 @@ jobs:
             "$KEYCHAIN_PATH"
 
       # =========================================================
-      # 10. FIND SIGNING IDENTITY
+      # 12. FIND SIGNING IDENTITY
       # =========================================================
       - name: Read Apple Distribution signing identity
         shell: bash
@@ -276,7 +341,7 @@ jobs:
           echo "$SIGNING_IDENTITY"
 
       # =========================================================
-      # 11. VERIFY PROVISIONING PROFILE
+      # 13. VERIFY PROVISIONING PROFILE
       # =========================================================
       - name: Verify TonYoga provisioning profile
         shell: bash
@@ -305,7 +370,7 @@ jobs:
           echo "TonYoga provisioning profile verified."
 
       # =========================================================
-      # 12. SET VERSION / BUILD
+      # 14. SET VERSION / BUILD
       # =========================================================
       - name: Set iOS version and build number
         shell: bash
@@ -324,7 +389,7 @@ jobs:
           echo "Build: ${GITHUB_RUN_NUMBER}"
 
       # =========================================================
-      # 13. VERIFY XCODE AGAIN BEFORE ARCHIVE
+      # 15. VERIFY XCODE SDK
       # =========================================================
       - name: Verify build SDK
         shell: bash
@@ -355,7 +420,7 @@ jobs:
           echo "iOS SDK 26+ verified."
 
       # =========================================================
-      # 14. ARCHIVE
+      # 16. ARCHIVE
       # =========================================================
       - name: Archive TonYoga
         shell: bash
@@ -377,7 +442,7 @@ jobs:
             clean archive
 
       # =========================================================
-      # 15. EXPORT OPTIONS
+      # 17. EXPORT OPTIONS
       # =========================================================
       - name: Create App Store export options
         shell: bash
@@ -421,7 +486,7 @@ jobs:
           cat "$RUNNER_TEMP/ExportOptions.plist"
 
       # =========================================================
-      # 16. EXPORT IPA
+      # 18. EXPORT IPA
       # =========================================================
       - name: Export signed IPA
         shell: bash
@@ -457,9 +522,7 @@ jobs:
           echo "$IPA_PATH"
 
       # =========================================================
-      # 17. INSTALL APP STORE CONNECT API KEY
-      #
-      # APP_STORE_CONNECT_API_KEY_P8 contains BASE64 encoded P8.
+      # 19. INSTALL APP STORE CONNECT API KEY
       # =========================================================
       - name: Install App Store Connect API key
         shell: bash
@@ -504,9 +567,8 @@ jobs:
 
           echo "App Store Connect API key ready."
 
-      
       # =========================================================
-      # 19. UPLOAD IPA
+      # 20. UPLOAD IPA
       # =========================================================
       - name: Upload IPA to App Store Connect
         shell: bash
@@ -529,7 +591,7 @@ jobs:
             --apiIssuer "${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}"
 
       # =========================================================
-      # 20. SAVE IPA ARTIFACT
+      # 21. SAVE IPA ARTIFACT
       # =========================================================
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
@@ -539,7 +601,7 @@ jobs:
           if-no-files-found: error
 
       # =========================================================
-      # 21. CLEANUP
+      # 22. CLEANUP
       # =========================================================
       - name: Cleanup signing files
         if: always()
