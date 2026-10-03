@@ -24,6 +24,7 @@ from routers.printful import printful_nightly_sync_tick
 from routers import challenges  # noqa: F401
 from routers import access, availability  # noqa: F401
 from routers import analytics  # noqa: F401
+from routers import ios_commerce  # noqa: F401 — additive, same API and database
 
 # Set on startup so /api/health can surface why programs=0 (bad MONGO_URL / seed exception).
 _seed_ran: bool = False
@@ -153,6 +154,7 @@ async def on_startup():
     # New course purchases are time-bounded; existing purchase records stay intact.
     await db.programs.update_many({"price_model": "one_time"}, {"$set": {"price_model": "subscription"}})
     asyncio.create_task(_reminder_loop())
+    asyncio.create_task(account.account_deletion_worker())
 
 
 async def _reminder_loop():

@@ -1,3 +1,5 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
 import { useEffect, useState, useMemo } from "react";
 import { Link } from "react-router-dom";
 import { Flower2, Star } from "lucide-react";
@@ -54,7 +56,7 @@ export default function Shop() {
                         <Star className="h-3 w-3 fill-[#E0A38F]" /> Featured
                       </span>
                     )}
-                    {p.compare_at_price > p.price && (
+                    {!(isIOSApp() && p.type === "ebook") && p.compare_at_price > p.price && (
                       <span className="absolute top-2 right-2 z-10 rounded-full bg-[#B25A45] px-2.5 py-1 text-[10px] uppercase tracking-widest font-bold text-white" data-testid={`shop-sale-${p.id}`}>
                         Sale
                       </span>
@@ -82,8 +84,8 @@ export default function Shop() {
                     <div className="text-[13px] font-semibold leading-tight clamp-2">{p.title}</div>
                     {p.author && <div className="text-[11px] text-[#9AA096] mt-0.5">by {p.author}</div>}
                     <div className="mt-1 flex items-baseline gap-1.5">
-                      <span className="text-sm text-[#B25A45] font-semibold">{p.price > 0 ? `€${p.price}` : "On Amazon"}</span>
-                      {p.compare_at_price > p.price && <span className="text-xs text-[#9AA096] line-through">€{p.compare_at_price}</span>}
+                      <span className="text-sm text-[#B25A45] font-semibold">{isIOSApp() && p.type === "ebook" ? <IOSPrice itemType="product" itemId={p.id} /> : p.price > 0 ? `€${p.price}` : "On Amazon"}</span>
+                      {!(isIOSApp() && p.type === "ebook") && p.compare_at_price > p.price && <span className="text-xs text-[#9AA096] line-through">€{p.compare_at_price}</span>}
                     </div>
                   </div>
                 </Link>

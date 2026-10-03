@@ -102,3 +102,13 @@ frontend/android_backup_old/
 frontend/android_broken_20260915/
 frontend/android/local.properties
 frontend/ios_broken_20260916/
+
+# Local signing/configuration secrets must never be committed
+*.jks
+*.keystore
+*.p12
+*.p8
+*.mobileprovision
+**/key.properties
+!backend/ios-commerce.env.example
+.pytest_cache/

@@ -52,17 +52,21 @@ import { AppDownloads } from "@/components/AppDownloads";
 import AssistantWidget from "@/components/AssistantWidget";
 import LiveEditor from "@/lib/liveEditor";
 import "@/App.css";
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSCommerceLifecycle from "@/components/IOSCommerceLifecycle";
+import AuthLoading from "@/components/AuthLoading";
+import IOSAssistantConsent from "@/components/IOSAssistantConsent";
 
 function RequireAuth({ children }) {
-  const { user, ready } = useAuth();
-  if (!ready) return null;
+  const { user, ready, networkError } = useAuth();
+  if (!ready || (networkError && !user)) return <AuthLoading />;
   if (!user) return <Navigate to="/login" replace />;
   return children;
 }
 
 function Landed() {
-  const { user, ready } = useAuth();
-  if (!ready) return null;
+  const { user, ready, networkError } = useAuth();
+  if (!ready || (networkError && !user)) return <AuthLoading />;
   return user ? <Navigate to={getAuthDestination(user)} replace /> : <Landing />;
 }
 
@@ -70,9 +74,9 @@ function AppRoot() {
   // Web: the public marketing/landing page stays at "/".
   // Mobile app (Capacitor): skip the landing page — go straight to /home if the
   // user's session is still valid, otherwise to the login / sign-up page.
-  const { user, ready } = useAuth();
+  const { user, ready, networkError } = useAuth();
   if (isNativeApp()) {
-    if (!ready) return null;
+    if (!ready || (networkError && !user)) return <AuthLoading />;
     return <Navigate to={user ? getAuthDestination(user) : "/login"} replace />;
   }
   return <Marketing />;
@@ -82,7 +86,8 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <UsageTracker />
+        {!isIOSApp() && <UsageTracker />}
+        <IOSCommerceLifecycle />
         <Routes>
           <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
           <Route path="/certificate/:code" element={<Certificate />} />
@@ -128,7 +133,7 @@ export default function App() {
             <Route path="/passes" element={<Passes />} />
             <Route path="/wishlist" element={<RequireAuth><Wishlist /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
-            <Route path="/referrals" element={<RequireAuth><Referrals /></RequireAuth>} />
+            <Route path="/referrals" element={isIOSApp() ? <Navigate to="/profile" replace /> : <RequireAuth><Referrals /></RequireAuth>} />
             <Route path="/instructor" element={<RequireAuth><Instructor /></RequireAuth>} />
             <Route path="/checkout/success" element={<CheckoutSuccess />} />
             <Route path="/checkout/cancel" element={<CheckoutCancel />} />
@@ -136,8 +141,8 @@ export default function App() {
           </Route>
         </Routes>
         <AppDownloads />
-        <AssistantWidget />
-        <LiveEditor />
+        {isIOSApp() ? <IOSAssistantConsent><AssistantWidget /></IOSAssistantConsent> : <AssistantWidget />}
+        {!isIOSApp() && <LiveEditor />}
         <Toaster
           position="top-center"
           toastOptions={{

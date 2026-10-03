@@ -258,3 +258,8 @@ body.ty-edit-mode .ty-hover { outline: 2px dashed var(--tyterracotta) !important
 @media (prefers-reduced-motion: reduce) {
   .ps-live-dot, .ps-shimmer-text, .ps-float, .ps-rec-dot, .ps-sparkle { animation: none; }
 }
+
+/* iOS-only spacing: native contentInset=always owns the system safe area. */
+.ios-header-space { padding-top: 48px; }
+.ios-ai-consent-open { position: fixed; bottom: calc(100px + env(safe-area-inset-bottom)); right: 16px; z-index: 55; background: #FAFAF7; }
+.ios-ai-consent-reset { position: fixed; bottom: calc(83px + env(safe-area-inset-bottom)); right: 16px; z-index: 56; font-size: 10px; color: #545E56; background: #FAFAF7; border-radius: 8px; padding: 3px 6px; }

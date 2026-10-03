@@ -1,3 +1,6 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
+import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { Lock, Play, CheckCircle2, RotateCcw, Clock, Award, ShieldCheck, Sparkles, ClipboardCheck, PlayCircle, ShoppingBag, Tag } from "lucide-react";
@@ -22,6 +25,7 @@ export default function ProgramDetail() {
   const [claiming, setClaiming] = useState(false);
 
   const loadProgram = () => api.get(`/programs/${id}`).then(({ data }) => setP(data)).catch(() => setP(false));
+  useCommerceRefresh(() => loadProgram());
   useEffect(() => { loadProgram(); /* eslint-disable-next-line */ }, [id, user]);
   useEffect(() => {
     const end = p?.viewer?.access?.ends_at;
@@ -480,7 +484,7 @@ function EnrollCard({ p, user }) {
       <div className="flex items-center justify-between">
         <div>
           <div className="eyebrow" data-testid="program-subscription-heading">Course subscription</div>
-          <div data-testid="program-subscription-price" className="serif text-3xl mt-1">{new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency || "usd" }).format(p.price)}</div>
+          <div data-testid="program-subscription-price" className="serif text-3xl mt-1"><IOSPrice itemType="program" itemId={p.id} fallback={new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency || "usd" }).format(p.price)} /></div>
         </div>
       </div>
       <AccessTermSummary term={p.access_term} access={upcoming ? access : null} prefix="program-purchase" />

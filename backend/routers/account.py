@@ -7,6 +7,9 @@ data) after a 30-day grace window. Anonymized payment/order records are retained
 legal/tax purposes only.
 """
 from datetime import timedelta
+import os
+import asyncio
+from commerce_lock import delivery_lock
 
 from fastapi import Depends, HTTPException
 from pydantic import BaseModel, EmailStr
@@ -21,6 +24,10 @@ _PERSONAL_COLLECTIONS = [
     "class_passes", "submissions", "favorites", "wishlist", "progress",
     "referrals", "referral_credits", "notifications", "push_subscriptions",
     "workshop_registrations", "waitlist", "streaks", "certificates",
+    "access_grants", "watch_progress", "assignment_submissions", "private_session_requests",
+    "practice_streaks", "challenge_enrollments", "free_class_grants", "pass_usages",
+    "user_notifications", "assistant_requests", "assistant_usage", "chatbot_sessions",
+    "ios_purchase_intents", "teacher_training_registrations",
 ]
 
 
@@ -82,11 +89,17 @@ async def cancel_account_deletion(user: dict = Depends(get_current_user)):
     full = await db.users.find_one({"id": user["id"]})
     if not full or not full.get("deletion_scheduled_at"):
         raise HTTPException(400, "No pending deletion to cancel.")
-    await db.users.update_one(
-        {"id": user["id"]},
+    if full["deletion_scheduled_at"] <= now_utc().isoformat():
+        raise HTTPException(409, "The account deletion deadline has passed. Contact support.")
+    if full.get("deletion_purge_started_at"):
+        raise HTTPException(409, "Account deletion is already being finalized.")
+    result = await db.users.update_one(
+        {"id": user["id"], "deletion_scheduled_at": full["deletion_scheduled_at"], "deletion_purge_started_at": {"$exists": False}},
         {"$set": {"active": True},
          "$unset": {"deletion_requested_at": "", "deletion_scheduled_at": "", "deletion_reason": ""}},
     )
+    if not result.matched_count:
+        raise HTTPException(409, "Deletion is being finalized; contact support.")
     logger.info(f"[ACCOUNT DELETION] cancelled for user {user['id']} ({full.get('email')})")
     return {"ok": True}
 
@@ -112,33 +125,49 @@ async def public_deletion_request(payload: PublicDeletionRequest):
 
 
 async def _run_purge_deleted_accounts() -> dict:
-    """Permanently remove accounts past their 30-day grace window and wipe their
-    personal data. Anonymizes (not deletes) payment/order rows for tax records.
-    Invoked manually by an admin — never on startup or a background timer."""
-    now_iso = now_utc().isoformat()
-    purged = 0
-    cursor = db.users.find({"deletion_scheduled_at": {"$lt": now_iso, "$ne": None}})
-    async for u in cursor:
-        uid = u["id"]
-        for coll in _PERSONAL_COLLECTIONS:
+    """Finalize authenticated requests after the advertised grace period.
+    Only explicit deletion requests are eligible. A failed cleanup keeps the account
+    blocked and queues a retry; it is never reported as successfully purged.
+    Shared provider/tax records require the separate retention policy in the runbook.
+    """
+    purged, failed = 0, 0
+    async with delivery_lock(db, "account-purge"):
+        cursor = db.users.find({"active": False, "deletion_scheduled_at": {"$lt": now_utc().isoformat(), "$ne": None}})
+        async for u in cursor:
+            uid, email = u["id"], u.get("email", "")
             try:
-                await db[coll].delete_many({"user_id": uid})
-            except Exception as e:
-                logger.warning(f"purge {coll} for {uid} failed: {e}")
-        # Anonymize financial records instead of deleting them.
-        for coll in ("payment_transactions", "orders"):
+                claimed = await db.users.update_one(
+                    {"id": uid, "active": False, "deletion_scheduled_at": u["deletion_scheduled_at"]},
+                    {"$set": {"deletion_purge_started_at": now_utc().isoformat()}})
+                if not claimed.matched_count:
+                    continue
+                for coll in _PERSONAL_COLLECTIONS:
+                    await db[coll].delete_many({"user_id": uid})
+                # The following records use email or reference fields rather than user_id.
+                for coll in ("magic_link_tokens", "password_reset_tokens", "deletion_requests", "newsletter_subscribers", "quiz_leads", "ai_leads", "enquiries", "instructor_applications", "referral_invites"):
+                    await db[coll].delete_many({"$or": [{"user_id": uid}, {"email": email}]})
+                await db.referrals.delete_many({"$or": [{"referrer_id": uid}, {"referred_user_id": uid}]})
+                for coll in ("payment_transactions", "orders", "ios_transactions"):
+                    await db[coll].update_many({"user_id": uid}, {
+                        "$set": {"user_id": "deleted", "user_email": "deleted@removed", "personal_data_erased": True},
+                        "$unset": {"shipping_address": "", "billing_address": "", "notes": "", "admin_notes": "", "metadata": "", "intent_id": ""}})
+                await db.users.delete_one({"id": uid, "active": False, "deletion_scheduled_at": u["deletion_scheduled_at"]})
+                purged += 1
+            except Exception as exc:
+                failed += 1
+                logger.error("Account deletion cleanup failed; retained for retry (%s)", type(exc).__name__)
+    return {"ok": failed == 0, "purged": purged, "failed": failed}
+
+
+async def account_deletion_worker():
+    """Explicit opt-in in deployment config. Never executes merely by importing a module."""
+    while True:
+        if os.environ.get("ACCOUNT_DELETION_PURGE_ENABLED", "false").lower() == "true":
             try:
-                await db[coll].update_many(
-                    {"user_id": uid},
-                    {"$set": {"user_id": "deleted", "user_email": "deleted@removed"},
-                     "$unset": {"metadata.user_email": ""}},
-                )
-            except Exception:
-                pass
-        await db.users.delete_one({"id": uid})
-        purged += 1
-        logger.info(f"[ACCOUNT DELETION] purged user {uid} ({u.get('email')})")
-    return {"ok": True, "purged": purged}
+                await _run_purge_deleted_accounts()
+            except Exception as exc:
+                logger.error("Account deletion worker needs attention (%s)", type(exc).__name__)
+        await asyncio.sleep(3600)
 
 
 @api.get("/admin/deletion-requests/pending")
@@ -153,9 +182,7 @@ async def pending_deletions(user: dict = Depends(get_current_user)):
 
 @api.post("/admin/deletion-requests/purge")
 async def purge_deleted_accounts(user: dict = Depends(get_current_user)):
-    """Admin-only manual GDPR finalization. Permanently purges accounts whose 30-day
-    grace window has elapsed. This is deliberately NOT run automatically so a deploy or
-    restart can never destructively delete production user records."""
+    """Admin-only manual finalization of expired, authenticated deletion requests."""
     if user.get("role") != "admin":
         raise HTTPException(403, "Forbidden")
     return await _run_purge_deleted_accounts()

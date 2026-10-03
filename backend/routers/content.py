@@ -407,7 +407,7 @@ async def get_program(program_id: str, user: Optional[dict] = Depends(get_option
     # Related products (books, mats, etc.) curated for this course.
     rpids = program.get("related_product_ids") or []
     if rpids:
-        prods = await db.products.find({"id": {"$in": rpids}}, {"_id": 0}).to_list(100)
+        prods = await db.products.find({"id": {"$in": rpids}}, {"_id": 0, "ebook_file_url": 0}).to_list(100)
         by_id = {p["id"]: p for p in prods}
         program["related_products"] = [by_id[pid] for pid in rpids if pid in by_id]
     else:
@@ -617,7 +617,7 @@ async def list_products(category: Optional[str] = None):
     query: Dict[str, Any] = {"visible": {"$ne": False}}
     if category: query["category"] = category
     # Featured/pinned first (by manual rank), then newest.
-    return await db.products.find(query, {"_id": 0}).sort(
+    return await db.products.find(query, {"_id": 0, "ebook_file_url": 0}).sort(
         [("featured", -1), ("featured_rank", 1), ("created_at", -1)]
     ).to_list(500)
 
@@ -635,7 +635,7 @@ async def best_sellers(limit: int = 8):
     ]
     rows = await db.orders.aggregate(pipeline).to_list(60)
     prods = {p["id"]: p for p in await db.products.find(
-        {"visible": {"$ne": False}}, {"_id": 0}).sort([("featured", -1), ("featured_rank", 1), ("created_at", -1)]).to_list(500)}
+        {"visible": {"$ne": False}}, {"_id": 0, "ebook_file_url": 0}).sort([("featured", -1), ("featured_rank", 1), ("created_at", -1)]).to_list(500)}
     out, seen = [], set()
     for r in rows:
         p = prods.get(r["_id"])
@@ -656,12 +656,12 @@ async def best_sellers(limit: int = 8):
 async def product_bundle(product_id: str):
     """If this product is part of a course's related-products set (>=2), return the
     'buy-together & save' bundle so the shop product page can upsell it too."""
-    programs = await db.programs.find({"related_product_ids": product_id}, {"_id": 0}).to_list(50)
+    programs = await db.programs.find({"related_product_ids": product_id}, {"_id": 0, "ebook_file_url": 0}).to_list(50)
     for prog in programs:
         rpids = prog.get("related_product_ids") or []
         if len(rpids) < 2:
             continue
-        prods = await db.products.find({"id": {"$in": rpids}}, {"_id": 0}).to_list(100)
+        prods = await db.products.find({"id": {"$in": rpids}}, {"_id": 0, "ebook_file_url": 0}).to_list(100)
         by_id = {p["id"]: p for p in prods}
         ordered = [by_id[pid] for pid in rpids if pid in by_id and (by_id[pid].get("type") in (None, "physical"))]
         if len(ordered) < 2:
@@ -678,7 +678,7 @@ async def product_bundle(product_id: str):
 
 @api.get("/products/{product_id}")
 async def get_product(product_id: str):
-    p = await db.products.find_one({"id": product_id}, {"_id": 0})
+    p = await db.products.find_one({"id": product_id}, {"_id": 0, "ebook_file_url": 0})
     if not p: raise HTTPException(404, "Product not found")
     return p
 

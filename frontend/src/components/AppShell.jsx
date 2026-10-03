@@ -1,3 +1,4 @@
+import { isIOSApp } from "@/lib/iosPlatform";
 import { useEffect } from "react";
 import { NavLink, Link, useLocation, Outlet } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
@@ -76,15 +77,6 @@ export default function AppShell() {
         </div>
       )}
 
-      <AnimatePresence mode="wait" initial={false}>
-        <motion.main
-          key={loc.pathname}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -6 }}
-          transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-          className={hideNav ? "" : "safe-bottom"}
-        >
           {!hideNav && (
             <div className="fixed right-4 z-50 flex items-center gap-2" style={{ top: isStaff ? "3rem" : "0.75rem" }}>
               {!isStaff && <CreditIndicator />}
@@ -92,6 +84,16 @@ export default function AppShell() {
               {user && <NotificationBell />}
             </div>
           )}
+
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.main
+          key={loc.pathname}
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -6 }}
+          transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
+          className={hideNav ? "" : `safe-bottom ${isIOSApp() ? "ios-header-space" : ""}`}
+        >
           <Outlet />
         </motion.main>
       </AnimatePresence>

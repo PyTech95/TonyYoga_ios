@@ -1,3 +1,5 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
 import { Link } from "react-router-dom";
 import { ShoppingBag } from "lucide-react";
 
@@ -24,7 +26,7 @@ export default function RelatedProducts({ products, title = "Shop for this pract
               <div className="p-3">
                 <div className="text-[13px] font-semibold leading-tight truncate">{p.title}</div>
                 <div className="mt-1 text-sm text-[#B25A45] font-semibold">
-                  {cur(p.currency)}{Math.round(p.price)}
+                  {isIOSApp() && p.type === "ebook" ? <IOSPrice itemType="product" itemId={p.id} /> : `${cur(p.currency)}${Math.round(p.price)}`}
                 </div>
               </div>
             </Link>

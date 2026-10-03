@@ -1,3 +1,5 @@
+import hashlib
+from commerce_lock import delivery_lock
 """Printful print-on-demand integration.
 
 Part A: product sync + admin edit (syncs products from a Printful store into our
@@ -454,6 +456,16 @@ async def _pf_post(client: httpx.AsyncClient, path: str, json=None, params=None,
 
 
 async def submit_printful_order(order: dict, confirm: bool) -> dict:
+    async with delivery_lock(db, "printful:" + order["id"]):
+        fresh = await db.orders.find_one({"id": order["id"]})
+        if not fresh:
+            raise HTTPException(404, "Order not found")
+        if confirm and fresh.get("status") not in ("paid", "fulfilled", "shipped", "completed"):
+            raise HTTPException(409, "Only paid orders can be sent for production.")
+        return await _submit_printful_order(fresh, confirm)
+
+
+async def _submit_printful_order(order: dict, confirm: bool) -> dict:
     """Create a Printful order for the given order's Printful line items.
     confirm=False -> draft (review in Printful); confirm=True -> submit for fulfillment."""
     if not await _resolve_token():
@@ -462,9 +474,21 @@ async def submit_printful_order(order: dict, confirm: bool) -> dict:
     store_id = store_id or await _selected_store_id()
     if not items:
         raise HTTPException(400, f"No Printful items in this order (skipped: {', '.join(skipped) or 'none'})")
-    payload = {"recipient": _order_recipient(order), "items": items}
+    # Stable <=32-character external ID: retry after a lost API response must not
+    # create another charge/production order in Printful.
+    external_id = hashlib.sha256(("tonyoga:" + order["id"]).encode()).hexdigest()[:32]
+    payload = {"external_id": external_id, "recipient": _order_recipient(order), "items": items}
     async with httpx.AsyncClient(timeout=45) as client:
-        res = await _pf_post(client, "/orders", json=payload, params={"confirm": 1 if confirm else 0}, store_id=store_id)
+        lookup = str(order["printful_order_id"]) if order.get("printful_order_id") else "@" + external_id
+        response = await client.get(f"{BASE}/orders/{lookup}", headers=await _headers(store_id))
+        if response.status_code == 404:
+            res = await _pf_post(client, "/orders", json=payload, params={"confirm": 1 if confirm else 0}, store_id=store_id)
+        elif response.status_code == 200:
+            body = response.json(); res = body.get("result", body)
+            if confirm and res.get("status") == "draft":
+                res = await _pf_post(client, f"/orders/{res['id']}/confirm", store_id=store_id)
+        else:
+            raise HTTPException(502, "Could not reconcile the existing Printful order; retry later.")
     upd = {
         "printful_order_id": res.get("id"),
         "printful_status": res.get("status"),
@@ -503,7 +527,9 @@ async def try_auto_fulfill_order(order_id: str):
         items, skipped, _store = await _resolve_items(order)
         if not items:
             return  # nothing Printful can fulfill (all manual products)
-        if not await _is_live_payments():
+        payment = await db.payment_transactions.find_one({"item_type": "cart", "item_id": order_id, "payment_status": "paid"})
+        sandbox_payment = (payment or {}).get("provider_environment") == "sandbox"
+        if sandbox_payment or not await _is_live_payments():
             await db.orders.update_one(
                 {"id": order_id},
                 {"$set": {"printful_status": "skipped_test_mode", "fulfillment_skipped_items": skipped}},
@@ -556,10 +582,16 @@ async def printful_webhook(request: Request):
         raise HTTPException(400, "Invalid JSON")
     if event.get("type") == "package_shipped":
         data = event.get("data", {}) or {}
-        ship = data.get("shipment", {}) or {}
-        order = data.get("order", {}) or {}
-        pf_id = order.get("id")
-        if pf_id:
+        pf_id = (data.get("order", {}) or {}).get("id")
+        local = await db.orders.find_one({"printful_order_id": pf_id}) if pf_id else None
+        if local:
+            store_id = await _selected_store_id()
+            async with httpx.AsyncClient(timeout=30) as client:
+                verified = await _pf_get(client, f"/orders/{int(pf_id)}", store_id=store_id)
+            shipments = verified.get("shipments") or []
+            if not shipments:
+                return {"received": True}
+            ship = shipments[-1]
             await db.orders.update_one(
                 {"printful_order_id": pf_id},
                 {"$set": {"status": "shipped", "printful_status": "shipped",

@@ -1,3 +1,4 @@
+import { isIOSApp } from "@/lib/iosPlatform";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { MessageCircle, X, Send, Mic, PhoneOff, Volume2, RotateCcw, ArrowUpRight } from 'lucide-react';
@@ -110,7 +111,7 @@ export default function AssistantWidget() {
       <div ref={scroll} className="ty-assistant-conversation" role="log" aria-live="polite" aria-relevant="additions" data-testid="assistant-conversation">
         {messages.map((message, index) => <div key={index} className={`ty-assistant-message ty-message-${message.role}`} data-testid={`assistant-message-${index}`}>
           <p data-testid={`assistant-message-text-${index}`}>{message.text || 'Thinking…'}</p>
-          {message.links?.length > 0 && <div className="ty-assistant-links">{message.links.map((link, n) => <Link key={link.href} to={link.href} data-testid={`assistant-link-${index}-${n}`} onClick={() => { stop(); if (window.innerWidth < 640) setOpen(false); }}>{link.label}<ArrowUpRight size={13} /></Link>)}</div>}
+          {message.links?.length > 0 && <div className="ty-assistant-links">{message.links.filter(link => !isIOSApp() || (/^\/(?!\/)/.test(link.href) && !/^\/(?:checkout|referrals)/.test(link.href))).map((link, n) => <Link key={link.href} to={link.href} data-testid={`assistant-link-${index}-${n}`} onClick={() => { stop(); if (window.innerWidth < 640) setOpen(false); }}>{link.label}<ArrowUpRight size={13} /></Link>)}</div>}
           {message.role === 'assistant' && message.text && !message.pending && <button disabled={sending || voice.active} onClick={() => { setError(''); voice.replay(message); }} title="Listen to this answer" aria-label="Listen to this answer" className="ty-assistant-replay" data-testid={`assistant-replay-${index}`}><Volume2 size={14} /></button>}
         </div>)}
         {messages.length <= 1 && <div className="ty-assistant-suggestions">{['Find a beginner course', 'Explore memberships'].map((label, n) => <button key={label} onClick={() => send(label)} disabled={sending || voice.active} data-testid={`assistant-suggestion-${n}`}>{label}<ArrowUpRight size={14} /></button>)}</div>}

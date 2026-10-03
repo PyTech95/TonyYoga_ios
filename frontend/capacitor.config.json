@@ -5,7 +5,7 @@
   "backgroundColor": "#FAFAF7",
   "server": {
     "androidScheme": "https",
-    "iosScheme": "https"
+    "iosScheme": "capacitor"
   },
   "plugins": {
     "SplashScreen": {

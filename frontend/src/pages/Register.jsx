@@ -1,3 +1,4 @@
+import { isIOSApp } from "@/lib/iosPlatform";
 import { useState, useEffect } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
@@ -17,6 +18,7 @@ export default function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
+  const [accepted, setAccepted] = useState(false);
 
   useEffect(() => {
     if (refCode) toast(t("register.invited_toast"));
@@ -25,6 +27,7 @@ export default function Register() {
   const submit = async (e) => {
     e.preventDefault();
     if (busy) return;
+    if (isIOSApp() && !accepted) { toast.error("Please confirm your age and accept the terms."); return; }
     if (password.length < 8) { toast.error("Password must be at least 8 characters."); return; }
     setBusy(true);
     try {
@@ -85,6 +88,8 @@ export default function Register() {
             className="mt-2 w-full rounded-2xl border border-[#E5E6DF] bg-white px-4 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#B25A45] focus:border-transparent"
           />
         </label>
+
+        {isIOSApp() && <label className="flex gap-3 text-sm text-[#545E56]"><input type="checkbox" required checked={accepted} onChange={e => setAccepted(e.target.checked)} /><span>I am at least 16 and agree to the <Link to="/terms" className="underline">Terms</Link> and <Link to="/privacy" className="underline">Privacy Policy</Link>.</span></label>}
 
         <button
           type="submit"

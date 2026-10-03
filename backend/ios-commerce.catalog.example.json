@@ -1,0 +1,42 @@
+{
+  "digital_products": [
+    {
+      "enabled": false,
+      "item_type": "program",
+      "item_id": "REPLACE_LIVE_PROGRAM_ID",
+      "product_id": "com.tonyoga.app.core26.30days",
+      "apple_type": "nonRenewable",
+      "duration_days": 30,
+      "description": "Core 26+ video program: 30 days of access, one payment, no automatic renewal."
+    },
+    {
+      "enabled": false,
+      "item_type": "membership",
+      "item_id": "REPLACE_LIVE_PLAN_ID",
+      "product_id": "com.tonyoga.app.membership.monthly",
+      "apple_type": "autoRenewable",
+      "subscription_group_id": "REPLACE_NUMERIC_APPLE_GROUP_ID",
+      "description": "One month of membership benefits shown on this plan. Renews monthly unless cancelled."
+    },
+    {
+      "enabled": false,
+      "item_type": "product",
+      "item_id": "REPLACE_LIVE_EBOOK_ID",
+      "product_id": "com.tonyoga.app.ebook.example",
+      "apple_type": "nonConsumable",
+      "description": "One yoga eBook; no recurring charge."
+    },
+    {
+      "enabled": false,
+      "item_type": "class_pack",
+      "item_id": "class_pack",
+      "product_id": "com.tonyoga.app.class_pack",
+      "apple_type": "consumable",
+      "description": "Five class credits, no expiry; bookings depend on available places."
+    }
+  ],
+  "sandbox_user_emails": [],
+  "amazon_print_product_ids": [],
+  "in_person_workshop_ids": [],
+  "in_person_training_ids": []
+}

@@ -1,3 +1,6 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
+import IOSAmazonButton from "@/components/IOSAmazonButton";
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -111,10 +114,10 @@ export default function ProductDetail() {
 
         <div className="flex items-baseline justify-between">
           <div className="flex items-baseline gap-3">
-            {p.price > 0
+            {isIOSApp() && isEbook ? <div className="serif text-3xl"><IOSPrice itemType="product" itemId={p.id} /></div> : p.price > 0
               ? <div className="serif text-4xl">€{p.price}</div>
               : <div className="serif text-2xl text-[#B25A45]">On Amazon</div>}
-            {p.compare_at_price > p.price && (
+            {!(isIOSApp() && isEbook) && p.compare_at_price > p.price && (
               <>
                 <div className="text-xl text-[#9AA096] line-through" data-testid="product-compare-price">€{p.compare_at_price}</div>
                 <span className="rounded-full bg-[#B25A45] px-2.5 py-1 text-[10px] uppercase tracking-widest font-bold text-white" data-testid="product-sale-badge">
@@ -183,18 +186,18 @@ export default function ProductDetail() {
               <PaymentButtons itemType="product" itemId={p.id} stripeLabel={`Get the eBook · €${p.price}`} testIdPrefix="ebook-pay" size="lg" />
             ) : (
               <Link to={`/login?next=/shop/${p.id}`} data-testid="ebook-signin" className="pill pill-primary w-full !py-3.5">
-                Sign in to get the eBook · €{p.price}
+                Sign in to get the eBook{!isIOSApp() && ` · €${p.price}`}
               </Link>
             )}
             <p className="text-xs text-[#6B7269] text-center">Instant PDF download after purchase — find it in Profile → My library.</p>
           </div>
         )}
 
-        {isBook && (
+        {isBook && (isIOSApp() ? <IOSAmazonButton productId={p.id} /> : (
           <a href={p.external_amazon_link || "#"} target="_blank" rel="noopener noreferrer" data-testid="product-amazon" className="pill pill-primary w-full !py-3.5">
             Buy on Amazon <ExternalLink className="h-4 w-4" />
           </a>
-        )}
+        ))}
 
         {bundle && (
           <BundleOffer
@@ -206,7 +209,7 @@ export default function ProductDetail() {
           />
         )}
 
-        {!isBook && p.external_amazon_link && (
+        {!isIOSApp() && !isBook && p.external_amazon_link && (
           <a
             href={p.external_amazon_link}
             target="_blank"

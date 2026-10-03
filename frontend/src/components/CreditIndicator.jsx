@@ -1,3 +1,4 @@
+import { isIOSApp } from "@/lib/iosPlatform";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Gift } from "lucide-react";
@@ -20,7 +21,7 @@ export default function CreditIndicator() {
       .catch(() => setCredit(0));
   }, [user, isStaff]);
 
-  if (!user || isStaff || credit <= 0) return null;
+  if (isIOSApp() || !user || isStaff || credit <= 0) return null;
 
   return (
     <Link

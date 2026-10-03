@@ -1,3 +1,5 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Video, CalendarRange } from "lucide-react";
@@ -23,7 +25,7 @@ export const ClassPurchaseOptions = ({ instance, user }) => {
         {m === "one_time" ? <Video className="h-5 w-5" /> : <CalendarRange className="h-5 w-5" />}{m === "one_time" ? "One class" : "Subscription"}
       </button>)}
     </div>}
-    <div className="space-y-2"><p data-testid="class-purchase-price" className="serif text-3xl">{amount}</p>
+    <div className="space-y-2"><p data-testid="class-purchase-price" className="serif text-3xl"><IOSPrice itemType={sub ? "class_subscription" : "class_one_time"} itemId={sub ? instance.template_id : instance.id} fallback={amount} /></p>
       {sub ? <><p data-testid="class-subscription-scope" className="text-sm text-[#545E56]">{instance.title} · all classes in this series during your term</p><AccessTermSummary term={term} prefix="class-purchase" /></> : <p data-testid="class-single-scope" className="text-xs text-[#545E56]">One-time payment · {new Date(instance.start_time).toLocaleString()}</p>}
     </div>
     {(unavailable || rollingOut) && <p data-testid="class-term-unavailable" role="alert" className="text-sm text-[#B25A45]">This subscription period does not cover the selected class.</p>}
