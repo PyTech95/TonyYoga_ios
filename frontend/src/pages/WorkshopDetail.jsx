@@ -1,3 +1,5 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -82,6 +84,7 @@ export default function WorkshopDetail() {
     notes: "",
   });
 
+  useCommerceRefresh(() => { refreshAvail(); if (user) api.get("/retreats/mine").then(({data}) => setMyReg((data || []).find(r => r.workshop_id === id && r.status !== "cancelled") || null)); });
   const refreshAvail = () => api.get(`/retreats/${id}/availability`).then(({ data }) => setAvail(data)).catch(() => {});
   useEffect(() => {
     // Sync reserve form with the auth user once it hydrates (avoids blank name/email).
@@ -109,11 +112,11 @@ export default function WorkshopDetail() {
   const beforeReservationCheckout = async () => {
     if (!user) { toast("Sign in to reserve."); nav("/login"); return false; }
     if (!form.name || !form.email) { toast.error("Name and email required"); return false; }
-    if (reservationId) return true;
+    if (reservationId) return { itemId: reservationId };
     try {
       const { data: reg } = await api.post("/retreats/reserve", { workshop_id: id, ...form });
       setReservationId(reg.id);
-      return true;
+      return { itemId: reg.id };
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Reservation failed");
       return false;
@@ -218,7 +221,7 @@ export default function WorkshopDetail() {
               </select>
               <input type="number" min="0" max="80" data-testid="reserve-years" value={form.years_of_practice} onChange={(e) => setForm({ ...form, years_of_practice: parseInt(e.target.value || "0") })} placeholder="Years of practice" className="w-full rounded-2xl border border-[#E5E6DF] px-4 py-3 text-[15px] focus:outline-none focus:ring-2 focus:ring-[#B25A45]" />
             </div>
-            {w.teacher_training_price_eur && (
+            {!isIOSApp() && w.teacher_training_price_eur && (
               <label className="flex items-center gap-3 rounded-2xl bg-white border border-[#E5E6DF] p-3">
                 <input type="checkbox" data-testid="reserve-tt" checked={form.wants_teacher_training} onChange={(e) => setForm({ ...form, wants_teacher_training: e.target.checked })} />
                 <span className="text-sm">Add teacher training (+€{Math.round(w.teacher_training_price_eur)})</span>
@@ -228,6 +231,7 @@ export default function WorkshopDetail() {
 
             <PaymentButtons
               itemType="workshop_deposit"
+              quoteItemId={id}
               itemId={reservationId || "pending"}
               stripeLabel={`Pay €${w.deposit_eur ?? 500} deposit`}
               onBeforeCheckout={beforeReservationCheckout}

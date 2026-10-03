@@ -3,7 +3,7 @@ import { ArrowLeft } from "lucide-react";
 
 const CONTACT_EMAIL = "tonyoga.online@gmail.com";
 const LEGAL_NAME = "TonYoga";
-const LAST_UPDATED = "June 2026";
+const LAST_UPDATED = "October 2026";
 
 export { CONTACT_EMAIL, LEGAL_NAME, LAST_UPDATED };
 

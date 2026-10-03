@@ -13,6 +13,7 @@ export function CheckoutSuccess() {
   const [tries, setTries] = useState(0);
   const sessionId = params.get("session_id");
   const isPaypal = params.get("paypal") === "1";
+  const mobileReturn = params.get("mobile_return") === "ios";
   const isCredit = params.get("credit") === "1";
   const paypalToken = params.get("token"); // PayPal appends ?token=<order_id> on return
 
@@ -23,7 +24,7 @@ export function CheckoutSuccess() {
     if (isCredit) {
       setStatus("paid");
       toast.success("You're in.");
-      setTimeout(() => nav("/profile", { replace: true }), 1500);
+      if (!mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500);
       return () => { cancelled = true; };
     }
 
@@ -36,7 +37,7 @@ export function CheckoutSuccess() {
           if (data.status === "captured" || data.status === "already_captured") {
             setStatus("paid");
             toast.success("Welcome to Tony Yoga.");
-            setTimeout(() => nav("/profile", { replace: true }), 1500);
+            if (!mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500);
           } else {
             setStatus("error");
           }
@@ -56,7 +57,7 @@ export function CheckoutSuccess() {
         if (data.payment_status === "paid") {
           setStatus("paid");
           toast.success("Welcome to Tony Yoga.");
-          setTimeout(() => nav("/profile", { replace: true }), 1500);
+          if (!mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500);
           return;
         }
         if (data.status === "expired") { setStatus("expired"); return; }
@@ -66,25 +67,27 @@ export function CheckoutSuccess() {
     };
     poll();
     return () => { cancelled = true; };
-  }, [sessionId, tries, nav, isPaypal, paypalToken, isCredit]);
+  }, [sessionId, tries, nav, isPaypal, paypalToken, isCredit, mobileReturn]);
 
   return (
     <div data-testid="checkout-success">
       <PageHeader eyebrow="Membership" title="Confirming…" testId="checkout-success-header" />
       <div className="mx-auto max-w-md px-6 py-8 text-center">
-        {status === "checking" && <Spinner label="Verifying with Stripe" />}
+        {status === "checking" && <Spinner label="Confirming your payment" />}
         {status === "paid" && (
           <div className="animate-fade-up">
             <CheckCircle2 className="h-14 w-14 text-[#839682] mx-auto mb-4" />
             <div className="serif text-2xl">You're in.</div>
-            <p className="text-sm text-[#6B7269] mt-2">Redirecting to your profile…</p>
+            <p className="text-sm text-[#6B7269] mt-2">{mobileReturn ? "Payment is confirmed for the TonYoga account you used to book." : "Redirecting to your profile…"}</p>
+            {mobileReturn && <a className="pill pill-primary mt-5" href="com.tonyoga.app://checkout-return">Return to TonYoga</a>}
+            {mobileReturn && <p className="text-xs mt-3">You can also reopen TonYoga manually. The app checks the payment with our server.</p>}
           </div>
         )}
         {(status === "error" || status === "bad" || status === "timeout") && (
           <>
             <div className="serif text-xl mb-2">Something didn't finish.</div>
             <p className="text-sm text-[#6B7269]">If you were charged, contact tony@tonysanchezyoga.com.</p>
-            <Link to="/memberships" className="pill pill-ghost mt-6 inline-flex">Back to memberships</Link>
+            {mobileReturn ? <a className="pill pill-ghost mt-6" href="com.tonyoga.app://checkout-return">Return to TonYoga</a> : <Link to="/memberships" className="pill pill-ghost mt-6 inline-flex">Back to memberships</Link>}
           </>
         )}
       </div>
@@ -115,7 +118,7 @@ export function CheckoutCancel() {
             Your €{released.toFixed(2)} gift-card credit has been returned to your account.
           </p>
         )}
-        <Link to="/memberships" className="pill pill-primary inline-flex">See plans again</Link>
+        {params.get("mobile_return") === "ios" ? <a className="pill pill-primary" href="com.tonyoga.app://checkout-return">Return to TonYoga</a> : <Link to="/memberships" className="pill pill-primary inline-flex">See plans again</Link>}
       </div>
     </div>
   );

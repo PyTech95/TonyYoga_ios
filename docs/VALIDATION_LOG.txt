@@ -1,0 +1,5 @@
+Python syntax: 161 source/test/tool files parsed.
+Workflow YAML parsed; 21 embedded shell steps pass bash -n; existing 7 secret names preserved.
+Frontend package/lock dependency definitions match; no added npm dependency.
+77 tracked native Android files unchanged; 7 original iOS icon/splash/catalog files byte-identical.
+git diff --check: PASS.

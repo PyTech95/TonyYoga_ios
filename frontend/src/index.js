@@ -3,9 +3,10 @@ import ReactDOM from "react-dom/client";
 import "@/index.css";
 import "@/i18n";
 import App from "@/App";
+import AppErrorBoundary from "@/components/AppErrorBoundary";
 
 // Register service worker for PWA
-if ("serviceWorker" in navigator) {
+if ("serviceWorker" in navigator && !window.Capacitor?.isNativePlatform?.()) {
   // When a NEW build's service worker takes over an already-controlled page,
   // reload once so users run the latest code. Skip the reload on the very first
   // visit (no prior controller) — clients.claim() fires controllerchange there
@@ -28,4 +29,4 @@ if ("serviceWorker" in navigator) {
 }
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
-root.render(<App />);
+root.render(<AppErrorBoundary><App /></AppErrorBoundary>);

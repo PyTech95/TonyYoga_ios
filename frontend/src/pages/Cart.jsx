@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
 import { Trash2, ShoppingBag, Minus, Plus } from "lucide-react";
@@ -20,6 +20,9 @@ export default function Cart() {
     name: user?.name || "", line1: "", line2: "", city: "",
     state: "", postal_code: "", country: "United States", phone: "",
   });
+
+  const checkoutFingerprint = JSON.stringify([items, addr, promo, discount]);
+  useEffect(() => { setOrderId(null); }, [checkoutFingerprint]);
 
   if (items.length === 0) {
     return (
@@ -55,7 +58,7 @@ export default function Cart() {
         return false;
       }
     }
-    return true;
+    return { itemId: currentOrderId };
   };
 
   return (

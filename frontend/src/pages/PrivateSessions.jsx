@@ -1,3 +1,4 @@
+import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -36,6 +37,7 @@ export default function PrivateSessions() {
   const [hold, setHold] = useState(null);
   const [error, setError] = useState("");
   const [now, setNow] = useState(Date.now());
+  useCommerceRefresh(() => loadMine());
   useEffect(() => { const timer = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(timer); }, []);
 
   useEffect(() => {

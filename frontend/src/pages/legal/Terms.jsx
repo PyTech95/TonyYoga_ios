@@ -19,15 +19,15 @@ export default function Terms() {
 
       <H2>2. Memberships, purchases & billing</H2>
       <UL items={[
-        "Memberships renew automatically for the billing cycle you choose until cancelled. You can cancel at any time; access continues until the end of the current paid period.",
+        "Auto-renewing subscriptions renew for the displayed billing period unless cancelled at least 24 hours before renewal. Non-renewing courses/passes last for the stated duration and do not renew automatically. The purchase confirmation identifies which applies.",
         "One-time purchases (courses, passes, products, retreat deposits) are charged at checkout.",
         "Prices are shown in euros (€) unless stated otherwise and include applicable taxes where required.",
-        "Payments are processed securely by Stripe and PayPal. We do not store your full card details.",
+        "On iPhone/iPad, digital purchases are processed by Apple In-App Purchase. Eligible physical goods and real-time private one-to-one sessions use external checkout. Web purchases may use Stripe or PayPal. We do not store your full card details.",
       ]} />
 
       <H2>3. Cancellation & refunds</H2>
       <UL items={[
-        "Memberships: cancel any time from your profile; no partial refunds for the current cycle, but you keep access until it ends.",
+        "Apple subscriptions: manage/cancel in your Apple account subscriptions. Apple handles App Store refund requests. Access normally continues until the paid expiry unless refunded or revoked. Deleting your TonYoga account does not cancel an Apple subscription. Contact support about externally purchased services.",
         "Digital content (courses, on-demand videos, e-books): because access is granted immediately, these are generally non-refundable once opened, except where required by law.",
         "Retreats: deposits and balances follow the cancellation window shown at booking. Cancellations 60+ days before the start date are eligible for a refund of the deposit; later cancellations are non-refundable. Refunds, where due, are issued to the original payment method.",
         "Physical products: contact us within 14 days of delivery for returns of unused items in original condition.",

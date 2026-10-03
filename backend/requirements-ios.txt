@@ -1,0 +1,3 @@
+# Add only this Apple verification dependency to a COPY of your existing working venv first.
+# Apple patched the certificate/OCSP verification issue in 3.1.2.
+app-store-server-library==3.1.2

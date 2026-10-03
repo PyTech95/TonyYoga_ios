@@ -14,6 +14,8 @@ cart) works identically once captured.
 """
 import base64
 import os
+from decimal import Decimal, InvalidOperation
+from commerce_lock import delivery_lock
 from typing import Any, Dict, Optional
 from fastapi import Depends, HTTPException, Request
 import httpx
@@ -177,8 +179,8 @@ async def paypal_create_order(payload: CheckoutRequest, user: dict = Depends(get
         "application_context": {
             "brand_name": "Tony Yoga",
             "user_action": "PAY_NOW",
-            "return_url": f"{payload.origin_url}/checkout/success?paypal=1",
-            "cancel_url": f"{payload.origin_url}/checkout/cancel?paypal=1",
+            "return_url": f"{payload.origin_url}/checkout/success?paypal=1" + ("&mobile_return=ios" if (payload.metadata or {}).get("mobile_return") == "ios" else ""),
+            "cancel_url": f"{payload.origin_url}/checkout/cancel?paypal=1" + ("&mobile_return=ios" if (payload.metadata or {}).get("mobile_return") == "ios" else ""),
         },
     }
     async with httpx.AsyncClient(timeout=15) as c:
@@ -205,7 +207,8 @@ async def paypal_create_order(payload: CheckoutRequest, user: dict = Depends(get
     }
     await db.payment_transactions.insert_one({
         "id": gen_id(), "session_id": data["id"],  # reuse session_id column for order_id
-        "provider": "paypal",
+        "provider": "paypal", "delivery_version": 2,
+        "provider_environment": "live" if await _paypal_base_url() == LIVE_BASE else "sandbox",
         "user_id": user["id"], "user_email": user["email"],
         "amount": float(charge_amount), "currency": currency.upper(),
         "credit_applied": credit_applied,
@@ -219,107 +222,108 @@ async def paypal_create_order(payload: CheckoutRequest, user: dict = Depends(get
     return {"url": approve_url, "order_id": data["id"]}
 
 
+def _verify_paypal_order(data, txn):
+    """Verify a SERVER-to-PayPal response against our persisted order, never a URL flag."""
+    try:
+        if data.get("id") != txn["session_id"] or data.get("status") != "COMPLETED":
+            raise ValueError("Order not completed")
+        units = data.get("purchase_units") or []
+        if len(units) != 1 or units[0].get("custom_id") != txn["user_id"]:
+            raise ValueError("Order ownership mismatch")
+        captures = units[0].get("payments", {}).get("captures", [])
+        complete = [c for c in captures if c.get("status") == "COMPLETED"]
+        if len(complete) != 1:
+            raise ValueError("Expected one completed capture")
+        amount = complete[0]["amount"]
+        if amount["currency_code"].upper() != txn["currency"].upper() or Decimal(amount["value"]) != Decimal(str(txn["amount"])).quantize(Decimal("0.01")):
+            raise ValueError("Captured amount or currency differs")
+        return complete[0]["id"]
+    except (KeyError, TypeError, ValueError, InvalidOperation) as exc:
+        raise HTTPException(409, "PayPal confirmation did not match this order. Please contact support.") from exc
+
+
+async def _paypal_order_details(order_id, token):
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.get(f"{await _paypal_base_url()}/v2/checkout/orders/{order_id}", headers={"Authorization": f"Bearer {token}"})
+    if response.status_code != 200:
+        raise HTTPException(502, "PayPal order confirmation is temporarily unavailable.")
+    return response.json()
+
+
+async def _complete_paypal_order(order_id, data):
+    async with delivery_lock(db, f"paypal:{order_id}"):
+        txn = await db.payment_transactions.find_one({"session_id": order_id, "provider": "paypal"})
+        if not txn:
+            raise HTTPException(404, "PayPal order not found")
+        capture_id = _verify_paypal_order(data, txn)
+        if txn.get("fulfilled_at") or (txn.get("payment_status") == "paid" and txn.get("delivery_version", 1) < 2 and not txn.get("access_snapshot") and txn.get("item_type") != "private_session"):
+            # Older handlers marked ordinary purchases paid only once. Do not issue a
+            # duplicate entitlement/order when a historic webhook is redelivered.
+            if not txn.get("fulfilled_at"):
+                await db.payment_transactions.update_one({"id": txn["id"]}, {"$set": {"fulfilled_at": txn.get("completed_at") or txn.get("created_at")}})
+            return {"status": "already_captured", "order_id": order_id}
+        await db.payment_transactions.update_one({"id": txn["id"]}, {"$set": {
+            "payment_status": "paid", "status": "complete", "completed_at": txn.get("completed_at") or now_utc().isoformat(),
+            "paypal_capture_id": capture_id}})
+        txn = await db.payment_transactions.find_one({"id": txn["id"]})
+        await _fulfill_payment(txn)
+        await db.payment_transactions.update_one({"id": txn["id"]}, {"$set": {"fulfilled_at": now_utc().isoformat()}})
+        return {"status": "captured", "order_id": order_id}
+
+
 @api.post("/paypal/capture/{order_id}")
 async def paypal_capture_order(order_id: str, request: Request):
-    """Capture a PayPal order after the buyer approved it. Idempotent.
-    Auth is optional — the buyer already authenticated on PayPal, and the order_id
-    itself is unguessable, so a returning tab that lost its JWT can still finalise."""
+    # Existing web callback remains supported. The unguessable order ID is not payment
+    # proof: always re-fetch/reconcile a captured order with PayPal server-to-server.
+    if not order_id.isalnum() or len(order_id) > 50:
+        raise HTTPException(400, "Invalid order reference")
     txn = await db.payment_transactions.find_one({"session_id": order_id, "provider": "paypal"})
     if not txn:
         raise HTTPException(404, "PayPal order not found")
-    if txn.get("payment_status") == "paid":
-        if (txn.get("access_snapshot") or txn.get("item_type") == "private_session") and not txn.get("fulfilled_at"):
-            await _fulfill_payment(txn)
+    if txn.get("payment_status") == "paid" and txn.get("fulfilled_at"):
         return {"status": "already_captured", "order_id": order_id}
-
     token = await _paypal_access_token()
-    async with httpx.AsyncClient(timeout=20) as c:
-        r = await c.post(
-            f"{await _paypal_base_url()}/v2/checkout/orders/{order_id}/capture",
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-        )
-    # 201 = captured; 422 with COMPL* = already captured previously
-    if r.status_code not in (200, 201):
-        # Race: buyer may already have been captured via webhook
-        if r.status_code == 422 and "ORDER_ALREADY_CAPTURED" in r.text:
-            return {"status": "already_captured", "order_id": order_id}
-        logger.error(f"PayPal capture failed: {r.status_code} {r.text}")
-        raise HTTPException(502, "PayPal capture failed")
-    data = r.json()
-    status = data.get("status")
-    if status != "COMPLETED":
-        raise HTTPException(400, f"Unexpected capture status: {status}")
-
-    await db.payment_transactions.update_one(
-        {"session_id": order_id},
-        {"$set": {"payment_status": "paid", "status": "complete",
-                  "completed_at": now_utc().isoformat(),
-                  "paypal_capture_response": data}},
-    )
-    txn = await db.payment_transactions.find_one({"session_id": order_id})
-    await _fulfill_payment(txn)
-    return {"status": "captured", "order_id": order_id}
+    async with httpx.AsyncClient(timeout=20) as client:
+        response = await client.post(f"{await _paypal_base_url()}/v2/checkout/orders/{order_id}/capture",
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}", "PayPal-Request-Id": f"capture-{order_id}"})
+    if response.status_code not in (200, 201) and not (response.status_code == 422 and "ORDER_ALREADY_CAPTURED" in response.text):
+        raise HTTPException(502, "PayPal capture could not be completed. Retry confirmation, not payment.")
+    # The GET representation reliably includes custom_id and purchase units for both
+    # successful captures and ORDER_ALREADY_CAPTURED retries.
+    data = await _paypal_order_details(order_id, token)
+    return await _complete_paypal_order(order_id, data)
 
 
 @api.post("/webhook/paypal")
 async def paypal_webhook(request: Request):
-    """PayPal webhook. Handles PAYMENT.CAPTURE.COMPLETED for capture-race safety.
-
-    Signature verification is opportunistic: if a webhook_id is configured
-    (paypal_webhook_id setting) we call PayPal's verify-webhook-signature API;
-    otherwise we accept and match the order_id defensively.
-    """
-    body = await request.body()
+    """Never fulfill from an unsigned webhook or from a failed verification response."""
     try:
         event = await request.json()
-    except Exception as e:
-        logger.error(f"PayPal webhook JSON parse failed: {e}")
-        raise HTTPException(400, "Invalid JSON")
-
-    etype = event.get("event_type")
-    resource = event.get("resource", {}) or {}
-
-    # Best-effort signature verification if a webhook id is configured
-    webhook_id = await get_setting("paypal_webhook_id")
-    if webhook_id:
-        try:
-            token = await _paypal_access_token()
-            async with httpx.AsyncClient(timeout=10) as c:
-                v = await c.post(
-                    f"{await _paypal_base_url()}/v1/notifications/verify-webhook-signature",
-                    headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"},
-                    json={
-                        "auth_algo": request.headers.get("paypal-auth-algo", ""),
-                        "cert_url": request.headers.get("paypal-cert-url", ""),
-                        "transmission_id": request.headers.get("paypal-transmission-id", ""),
-                        "transmission_sig": request.headers.get("paypal-transmission-sig", ""),
-                        "transmission_time": request.headers.get("paypal-transmission-time", ""),
-                        "webhook_id": webhook_id,
-                        "webhook_event": event,
-                    },
-                )
-            if v.status_code != 200 or v.json().get("verification_status") != "SUCCESS":
-                logger.warning(f"PayPal webhook signature verify failed: {v.text}")
-                raise HTTPException(401, "Invalid webhook signature")
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.warning(f"PayPal signature verify errored, accepting anyway: {e}")
-
-    if etype == "PAYMENT.CAPTURE.COMPLETED":
-        # Custom_id was set to user_id; supplementary_data.related_ids.order_id links to Orders v2
-        order_id: Optional[str] = None
-        supp = resource.get("supplementary_data", {}) or {}
-        order_id = supp.get("related_ids", {}).get("order_id")
-        if order_id:
-            txn = await db.payment_transactions.find_one({"session_id": order_id, "provider": "paypal"})
-            if txn and (txn.get("payment_status") != "paid" or ((txn.get("access_snapshot") or txn.get("item_type") == "private_session") and not txn.get("fulfilled_at"))):
-                await db.payment_transactions.update_one(
-                    {"session_id": order_id},
-                    {"$set": {"payment_status": "paid", "status": "complete",
-                              "completed_at": now_utc().isoformat(),
-                              "paypal_webhook_capture": resource.get("id")}},
-                )
-                await _fulfill_payment(await db.payment_transactions.find_one({"session_id": order_id}))
-
+    except Exception as exc:
+        raise HTTPException(400, "Invalid JSON") from exc
+    webhook_id = (await get_setting("paypal_webhook_id")) or os.environ.get("PAYPAL_WEBHOOK_ID", "")
+    if not webhook_id:
+        raise HTTPException(503, "PayPal webhook verification has not been configured.")
+    names = ["paypal-auth-algo", "paypal-cert-url", "paypal-transmission-id", "paypal-transmission-sig", "paypal-transmission-time"]
+    if any(not request.headers.get(name) for name in names):
+        raise HTTPException(401, "Missing PayPal signature headers")
+    try:
+        token = await _paypal_access_token()
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(f"{await _paypal_base_url()}/v1/notifications/verify-webhook-signature",
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}"}, json={
+                    "auth_algo": request.headers["paypal-auth-algo"], "cert_url": request.headers["paypal-cert-url"],
+                    "transmission_id": request.headers["paypal-transmission-id"], "transmission_sig": request.headers["paypal-transmission-sig"],
+                    "transmission_time": request.headers["paypal-transmission-time"], "webhook_id": webhook_id, "webhook_event": event})
+        if response.status_code != 200 or response.json().get("verification_status") != "SUCCESS":
+            raise HTTPException(401, "Invalid PayPal webhook signature")
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(503, "PayPal webhook verification is temporarily unavailable.") from exc
+    if event.get("event_type") == "PAYMENT.CAPTURE.COMPLETED":
+        order_id = ((event.get("resource") or {}).get("supplementary_data") or {}).get("related_ids", {}).get("order_id")
+        if order_id and await db.payment_transactions.find_one({"session_id": order_id, "provider": "paypal"}):
+            data = await _paypal_order_details(order_id, token)
+            await _complete_paypal_order(order_id, data)
     return {"received": True}

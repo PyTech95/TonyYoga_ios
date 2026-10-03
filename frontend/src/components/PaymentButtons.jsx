@@ -1,4 +1,6 @@
 import { useEffect, useState } from "react";
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPaymentButtons from "./IOSPaymentButtons";
 import { toast } from "sonner";
 import { CreditCard, ShieldCheck, Gift } from "lucide-react";
 import { api } from "@/lib/api";
@@ -13,7 +15,11 @@ import { useAuth } from "@/lib/auth";
  *   itemType, itemId, stripeLabel, onBeforeCheckout, disabled, size, variant, testIdPrefix
  *   allowCredit: when true (default), shows an "apply my credit" toggle for logged-in users
  */
-export default function PaymentButtons({
+export default function PaymentButtons(props) {
+  return isIOSApp() ? <IOSPaymentButtons {...props} /> : <WebPaymentButtons {...props} />;
+}
+
+function WebPaymentButtons({
   itemType,
   itemId,
   stripeLabel = "Pay with card",
@@ -53,16 +59,18 @@ export default function PaymentButtons({
 
   const start = async (provider) => {
     if (disabled || busy) return;
+    let resolvedItemId = itemId;
     if (onBeforeCheckout) {
       const cont = await onBeforeCheckout();
       if (cont === false) return;
+      if (cont?.itemId) resolvedItemId = cont.itemId;
     }
     setBusy(provider);
     try {
       const path = provider === "paypal" ? "/paypal/create-order" : "/checkout/session";
       const { data } = await api.post(path, {
         item_type: itemType,
-        item_id: itemId,
+        item_id: resolvedItemId,
         quantity,
         metadata: metadata || undefined,
         origin_url: window.location.origin,

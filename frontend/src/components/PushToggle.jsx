@@ -1,3 +1,4 @@
+import { isIOSApp } from "@/lib/iosPlatform";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bell, BellOff } from "lucide-react";
@@ -12,6 +13,8 @@ export default function PushToggle() {
   };
 
   useEffect(() => { refresh(); }, []);
+
+  if (isIOSApp()) return <p className="rounded-2xl bg-[#F2F2EC] p-4 text-xs text-[#6B7269]">Check the bell in TonYoga for in-app notifications. Native background push reminders are not enabled in this version.</p>;
 
   if (!pushSupported()) {
     return (

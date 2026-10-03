@@ -1,3 +1,5 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Pencil, Package } from "lucide-react";
@@ -30,12 +32,12 @@ export default function Programs() {
         {/* Discounted bundles */}
         {bundles.filter((b) => (b.programs || []).length > 0).map((b) => (
           <div key={b.id} data-testid={`bundle-card-${b.id}`} className="rounded-3xl bg-[#1C221F] text-[#FAFAF7] p-6">
-            <div className="flex items-center gap-2 text-[#E7B9AC]"><Package className="h-4 w-4" /><span className="eyebrow !text-[11px] !text-[#E7B9AC]">Bundle · save €{Math.round(b.savings || 0)}</span></div>
+            <div className="flex items-center gap-2 text-[#E7B9AC]"><Package className="h-4 w-4" /><span className="eyebrow !text-[11px] !text-[#E7B9AC]">Bundle{!isIOSApp() && ` · save €${Math.round(b.savings || 0)}`}</span></div>
             <div className="serif text-2xl mt-1.5">{b.title}</div>
             <p className="text-sm text-white/70 mt-2 leading-relaxed">{b.description}</p>
             <div className="mt-3 flex items-baseline gap-2">
-              <span className="serif text-3xl">€{Math.round(b.price)}</span>
-              <span className="text-sm text-white/50 line-through">€{Math.round(b.individual_total || 0)}</span>
+              <span className="serif text-3xl"><IOSPrice itemType="bundle" itemId={b.id} fallback={<>€{Math.round(b.price)}</>} /></span>
+              {!isIOSApp() && <span className="text-sm text-white/50 line-through">€{Math.round(b.individual_total || 0)}</span>}
               <span className="text-xs text-white/70">· {(b.programs || []).length} courses</span>
             </div>
             <div className="mt-4">
@@ -70,7 +72,7 @@ export default function Programs() {
                     <div className="serif text-2xl mt-1">{p.title}</div>
                     <p className="text-sm text-[#6B7269] mt-2 clamp-3 leading-relaxed">{p.description}</p>
                     <div className="mt-4 flex items-center justify-between">
-                      <div data-testid={`program-price-${p.id}`} className="text-[#1C221F] font-semibold">{new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency || "usd" }).format(p.price)}</div>
+                      <div data-testid={`program-price-${p.id}`} className="text-[#1C221F] font-semibold"><IOSPrice itemType="program" itemId={p.id} fallback={new Intl.NumberFormat(undefined, { style: "currency", currency: p.currency || "usd" }).format(p.price)} /></div>
                       <span className="text-sm text-[#B25A45] font-semibold">View program →</span>
                     </div>
                     {["subscription", "one_time"].includes(p.price_model) && <div className="mt-3 text-[#6B7269]"><AccessTermSummary term={p.access_term} prefix={`program-${p.id}`} /></div>}

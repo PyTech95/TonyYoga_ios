@@ -1,0 +1,517 @@
+{
+  "package": "TonYoga iOS Commerce Update",
+  "date": "2026-10-03",
+  "baseline_archive_sha256": "04d47a8dbc3c760f45d300d839a029cf6cd4bd246e01f861761c812255ac7591",
+  "files": [
+    {
+      "path": ".github/workflows/ios-testflight.yml",
+      "original_sha256": "87a9b5c714c8228aa467f67cab59eadd03762650018c3b030270faa396096f0a",
+      "updated_sha256": "d892bda8318673fc0d4caa8486296dcabaa221de7f2734044274e4ff90b05fb9"
+    },
+    {
+      "path": ".gitignore",
+      "original_sha256": "cbfd7eb649c59f402803fd70a17cfcdeb7dc0dafa5c4209bcef141e3e1bf37c4",
+      "updated_sha256": "b7eadf2303b795af8454459a9e8f6d23b7a1256e3590c1656b0e49724b84471e"
+    },
+    {
+      "path": "START_HERE_HINDI.md",
+      "original_sha256": null,
+      "updated_sha256": "a2196f32be859d487b024134e22a7b0fd4f7042fe5c7c8a20d50493a716cf989"
+    },
+    {
+      "path": "backend/commerce_lock.py",
+      "original_sha256": null,
+      "updated_sha256": "c23b86b7c86fba88d4962b8232791055087b227a099a5c35adda1ae76d217723"
+    },
+    {
+      "path": "backend/core.py",
+      "original_sha256": "8e4fe8872f2e1f1841ba52fa11532199171a20031b4bf34d196381459376821f",
+      "updated_sha256": "e000dafe87a95d88eac130c84fa0f322d9d445789bd43f0c4476350587fc9b9a"
+    },
+    {
+      "path": "backend/ios-commerce.catalog.example.json",
+      "original_sha256": null,
+      "updated_sha256": "dcc6640a5ce30a328ffc38e3798c8b9e014f64c13f091437513607b2a7054bdd"
+    },
+    {
+      "path": "backend/ios-commerce.env.example",
+      "original_sha256": null,
+      "updated_sha256": "8291ae6d9ee9cd3edf9d09feffbe21d5505b2a323fe00082387e97388939b428"
+    },
+    {
+      "path": "backend/ios_commerce_policy.py",
+      "original_sha256": null,
+      "updated_sha256": "d99b4751aa5211975545313e380386160e8540a2525fd33213ae0923170d0fef"
+    },
+    {
+      "path": "backend/requirements-ios.txt",
+      "original_sha256": null,
+      "updated_sha256": "4db8260b49c6b7e327aaf91da3355699e44e999609e09f7b1f340a3391dc26f9"
+    },
+    {
+      "path": "backend/routers/account.py",
+      "original_sha256": "2bb524971bf57e35fe682d314891b1f54df1022da8d5d26aee56f64fc5b46b61",
+      "updated_sha256": "108bd5863dc3328d80588138863a88e191eb246845d6163caf07633f32a99bfa"
+    },
+    {
+      "path": "backend/routers/auth.py",
+      "original_sha256": "3f9f93f62f02c325d95b5471755d4b3e1e53e104cd8dce4131bd6380bd9c8382",
+      "updated_sha256": "b7dfae995b1db8808b2494a807e54d3cab0298d10caf690e9667a76f3e60d148"
+    },
+    {
+      "path": "backend/routers/content.py",
+      "original_sha256": "35994e9267799020ed46818dbe4fa8f99551902516a77aabae9216acc1f88133",
+      "updated_sha256": "e90d9bfe5af5f24fbdf0c463e97e8674f39023aa6ac27060f0191e7a469928cc"
+    },
+    {
+      "path": "backend/routers/ios_commerce.py",
+      "original_sha256": null,
+      "updated_sha256": "ce9a41acb36019ffe366021501d4c3b0f3af89e53be9dfaffe81d3ee31b209a5"
+    },
+    {
+      "path": "backend/routers/payments.py",
+      "original_sha256": "916bf2fec216dd0689c147cfadae03a9602bbb08087136ae4c583cc4f2c8f44d",
+      "updated_sha256": "55c55ef8e80eb0d58d265010fd5070236bd82993258d5427931d569ab79e0f66"
+    },
+    {
+      "path": "backend/routers/paypal.py",
+      "original_sha256": "31cb5ff5dd28ea848ed51a1b1e1d046af78f2258f3b8dcfc60d41f9ec4f312a2",
+      "updated_sha256": "da9ddf1990a49e2ec7b293c54eef24f52908080d19bf4c2edd9bc2d8384bf9b4"
+    },
+    {
+      "path": "backend/routers/printful.py",
+      "original_sha256": "6c9db63451d60c7a29735be21e28d6c01b7fb21b0e89c80a82e61bab97d6549d",
+      "updated_sha256": "1ac70624bf3656780650340de5b2a49220a4bcbba7c4b38d884eb10239e8c665"
+    },
+    {
+      "path": "backend/server.py",
+      "original_sha256": "4e13b197daef1be1a467f069bc2bba9b2a1848dd0cff3985e08ec7dd1dfa29d4",
+      "updated_sha256": "3e12f9ffec4751b4f99f1c73d5c0be111c780da40de971bdaa251015e1f9dd19"
+    },
+    {
+      "path": "docs/APP_REVIEW_CHECKLIST.md",
+      "original_sha256": null,
+      "updated_sha256": "dd14c91c61fe45e6534ed341bfbafce9046bbf4ad8b2b706e6de110e5d3688d5"
+    },
+    {
+      "path": "docs/APP_REVIEW_REPLY_TEMPLATE.md",
+      "original_sha256": null,
+      "updated_sha256": "49f16eee65209a98bbd11692567ad5f9c43f9795618865f9d37ba2333c1720df"
+    },
+    {
+      "path": "docs/CHANGES.md",
+      "original_sha256": null,
+      "updated_sha256": "6827fbca551e6b616eb0b8783c66dd750fdbeac0e03cd26a9d51c35a9e2954d4"
+    },
+    {
+      "path": "docs/DEVICE_TEST_CHECKLIST.md",
+      "original_sha256": null,
+      "updated_sha256": "2438d2b5575e4bfd7e7eea2ed789d921039875486092cc08139143a473744b16"
+    },
+    {
+      "path": "docs/SOURCES.md",
+      "original_sha256": null,
+      "updated_sha256": "aa2ab6ebd5537e302facefe3c191939f112f2f7eb480bf3312376a35801c51a1"
+    },
+    {
+      "path": "docs/TEST_RESULTS.md",
+      "original_sha256": null,
+      "updated_sha256": "231572438ab5ef461c6b02ae753bf94830fd7bae19a89d8d9d69fcf524c4ee8e"
+    },
+    {
+      "path": "docs/VALIDATION_LOG.txt",
+      "original_sha256": null,
+      "updated_sha256": "e4b32caf541f868753a95bc91e187ea51c219c7222ed63d491722e375af93ed0"
+    },
+    {
+      "path": "frontend/capacitor.config.json",
+      "original_sha256": "569d55888170feca26bd7e97034045ed3777045a8ca20372729a86be8d318f4a",
+      "updated_sha256": "0d6bf079f03045dccb0a4562a6dffe1af2a3ebbce5e29f1ae3973ce1a47a7867"
+    },
+    {
+      "path": "frontend/ios/App/App.xcodeproj/project.pbxproj",
+      "original_sha256": "e99dcff7fc9ac75b7e7388e398e15af617fbdc8785788f96b4abb1bd5cb781e5",
+      "updated_sha256": "478321391b16a78d2aa30891a74e6ac05dbfb2a8c0073c5247da3e3adf25a346"
+    },
+    {
+      "path": "frontend/ios/App/App/Base.lproj/Main.storyboard",
+      "original_sha256": "7b7dc7acc67134bfaa80e5ce9c9068ba53db5369b9b70248aa7439fc2b09daae",
+      "updated_sha256": "eccd0345f389892cade5fab9a54d63be70285b8e7421e47d1590d2ac1f105d74"
+    },
+    {
+      "path": "frontend/ios/App/App/Info.plist",
+      "original_sha256": "2e938dc1a609f231711f01da220cae7b02924cd45fa9211f7ea8544ffb57890c",
+      "updated_sha256": "87d806c76c5c7f13f30c76252c2781a31f9f52fd95bccc8b45f811425c999370"
+    },
+    {
+      "path": "frontend/ios/App/App/PrivacyInfo.xcprivacy",
+      "original_sha256": null,
+      "updated_sha256": "9e49913d523f753021c2c7e5b134a078d78fa2d00da15129fc82711ae5799e83"
+    },
+    {
+      "path": "frontend/ios/App/App/SceneDelegate.swift",
+      "original_sha256": "738b9b96bb71d34d80cd8c1183cf7f8f6f2e789c64e46fb5fe6777a35ae12dfd",
+      "updated_sha256": "6c781e9a24a1b6f9627b63a359594c552c2a0601f2ce0629ce4f9ca0d99787cb"
+    },
+    {
+      "path": "frontend/ios/App/App/TonYogaCommercePlugin.swift",
+      "original_sha256": null,
+      "updated_sha256": "6068f4c2d0067ffca8cd20f943a19089750abea9ab660dbe5b251b4945d4f3a7"
+    },
+    {
+      "path": "frontend/ios/App/App/capacitor.config.json",
+      "original_sha256": null,
+      "updated_sha256": "8cf079d1f426098acd907c54f1efac2c7343ef7914afb76772ef50a0890bf1e7"
+    },
+    {
+      "path": "frontend/ios/App/App/config.xml",
+      "original_sha256": null,
+      "updated_sha256": "e9dcda493e663c5c4db9e3cb3bd968477a6e90aa8840bcbba40d72ed54b767ce"
+    },
+    {
+      "path": "frontend/ios/App/App/public/apple-touch-icon.png",
+      "original_sha256": null,
+      "updated_sha256": "ca41eab5ad03ba5c0a2038bcb79f793f35c3afc49069979f0939793947ad958f"
+    },
+    {
+      "path": "frontend/ios/App/App/public/asset-manifest.json",
+      "original_sha256": null,
+      "updated_sha256": "6ec74e86d69d457bc4e66806e5e7bfbef09657d0cb75cc782fffe1c9f3cc87ac"
+    },
+    {
+      "path": "frontend/ios/App/App/public/brand/logo.png",
+      "original_sha256": null,
+      "updated_sha256": "4dddcd1ba658c271bf2dd82cdfd3963be3525c8d17413f17a90900a34e45311f"
+    },
+    {
+      "path": "frontend/ios/App/App/public/cordova.js",
+      "original_sha256": null,
+      "updated_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/ios/App/App/public/cordova_plugins.js",
+      "original_sha256": null,
+      "updated_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "frontend/ios/App/App/public/favicon.ico",
+      "original_sha256": null,
+      "updated_sha256": "e21d53743ef64fe0a0e02747f9f5cfb5d289274401492e3714a1183c3cda2bda"
+    },
+    {
+      "path": "frontend/ios/App/App/public/icons/icon-192.png",
+      "original_sha256": null,
+      "updated_sha256": "1f202c553147073d2f7d3a9ec4ecdedf7949286a815de6f8d7d5eb6a06fff852"
+    },
+    {
+      "path": "frontend/ios/App/App/public/icons/icon-512-maskable.png",
+      "original_sha256": null,
+      "updated_sha256": "e03ee2f2a29f5e0d266431ec67bc139b9440483d9e2ef0ae785af10dd2eb043a"
+    },
+    {
+      "path": "frontend/ios/App/App/public/icons/icon-512.png",
+      "original_sha256": null,
+      "updated_sha256": "c686cb796db8827d1de8bf2dcbb34fdfe17279946c5227811020ab8fd3d38e83"
+    },
+    {
+      "path": "frontend/ios/App/App/public/index.html",
+      "original_sha256": null,
+      "updated_sha256": "6c04327816a7287d159b998dc17c18a983a5a081b4e610b95d4d982713793727"
+    },
+    {
+      "path": "frontend/ios/App/App/public/manifest.json",
+      "original_sha256": null,
+      "updated_sha256": "1d21b2c683a234ed907e64dae368aa4fe1ca4165921c3ccc47c7451e7d5f3dfd"
+    },
+    {
+      "path": "frontend/ios/App/App/public/offline.html",
+      "original_sha256": null,
+      "updated_sha256": "3a7a7343046deb479aefed720de0350e9ff52a256f8e1bb6e6d84fbeec8a9e21"
+    },
+    {
+      "path": "frontend/ios/App/App/public/sw.js",
+      "original_sha256": null,
+      "updated_sha256": "d56b079c59ba9b27fcd0c722a6c4b34ce002040d522a7103493db4fa56e6fdb2"
+    },
+    {
+      "path": "frontend/ios/capacitor-cordova-ios-plugins/CordovaPluginsResources.podspec",
+      "original_sha256": null,
+      "updated_sha256": "6ace787f88f8c8da88526ed2ecdf0b9bd659cdb64f56bd5e73a684e0d26b7e06"
+    },
+    {
+      "path": "frontend/ios/capacitor-cordova-ios-plugins/resources/.gitkeep",
+      "original_sha256": null,
+      "updated_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "frontend/ios/capacitor-cordova-ios-plugins/sources/.gitkeep",
+      "original_sha256": null,
+      "updated_sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    },
+    {
+      "path": "frontend/src/App.js",
+      "original_sha256": "255f5b4164248762c8304c3b13ebe74954972e17076fb4b9b93e1de2dd937db4",
+      "updated_sha256": "ec3928a68fe7c9fee1a8878a6dd38bfc924dfa9e366db974304541a04bb12487"
+    },
+    {
+      "path": "frontend/src/components/AppErrorBoundary.jsx",
+      "original_sha256": null,
+      "updated_sha256": "de360458a8de0f58f89bf8e8faada8568cb42066ebf3c80fcd6b5bb1cd474ccb"
+    },
+    {
+      "path": "frontend/src/components/AppShell.jsx",
+      "original_sha256": "8e973cd5a8309c1d9e80cd55fb66c1efb760ecfd91eb02fcf2d220a3f67b61cf",
+      "updated_sha256": "0f183875035ede91a9d986861129a36bbdb5062c25808026639badbd048e06be"
+    },
+    {
+      "path": "frontend/src/components/AssistantWidget.jsx",
+      "original_sha256": "db4110c0bb1261a54df587d8188efb38aa48fc3752529b5f1de6d9570b0ec4a9",
+      "updated_sha256": "ea9038c1135ede37c7bec9c21f21f0d21497662c9b01b263f1ce7c5ce9dfba70"
+    },
+    {
+      "path": "frontend/src/components/AuthLoading.jsx",
+      "original_sha256": null,
+      "updated_sha256": "e0b2e7edcaf73116a9d665f8726d78f36fc9adc0200601f3068d52e0623d0e58"
+    },
+    {
+      "path": "frontend/src/components/ClassPurchaseOptions.jsx",
+      "original_sha256": "8ca18e5cbb4ac5f9237fd9a132daa666fbb2e75be74918e8442d3be1241e4e3d",
+      "updated_sha256": "b924d42804a2f759470908a2235c6fe179aee860ea75d64c951ca493b8fd619a"
+    },
+    {
+      "path": "frontend/src/components/CreditIndicator.jsx",
+      "original_sha256": "1b65c353b2d376245ddee654b828eda968033595b26036ee75b61b7d5d598c83",
+      "updated_sha256": "cf45819c5c87673bbf9d2f29bb9ef70539a2bfd6d8731b5afdd04d03fdab92a2"
+    },
+    {
+      "path": "frontend/src/components/CreditNudge.jsx",
+      "original_sha256": "62c1545977c2b15e72606578fab45b5c611bdb9e5e5da05fda3ea60fea593689",
+      "updated_sha256": "cbfcfa238d67b3101d346154f99d4f5424b4f9eff859b8b49756c1c848344934"
+    },
+    {
+      "path": "frontend/src/components/IOSAmazonButton.jsx",
+      "original_sha256": null,
+      "updated_sha256": "e9c0cbfde4397036cfc91f37f507b59232f007c7242f6d2204a88dcc61b174bf"
+    },
+    {
+      "path": "frontend/src/components/IOSAssistantConsent.jsx",
+      "original_sha256": null,
+      "updated_sha256": "85300977d9a0c40c8e51299796a05ce12d32a0b58f0264e31db56ffc03d46b72"
+    },
+    {
+      "path": "frontend/src/components/IOSCommerceLifecycle.jsx",
+      "original_sha256": null,
+      "updated_sha256": "615023e6f8107d7f9cc8732cabeac2bd8ecbe8a9e6463c2fcb8e0eb3883bc93a"
+    },
+    {
+      "path": "frontend/src/components/IOSPaymentButtons.jsx",
+      "original_sha256": null,
+      "updated_sha256": "2f06f2d7ae1b9c525a32ca0f62b6f7f206eac2af343e9e1a466d122ba680eecd"
+    },
+    {
+      "path": "frontend/src/components/IOSPrice.jsx",
+      "original_sha256": null,
+      "updated_sha256": "13535e94ec9042d8c4420f51f8db369096ffb7d56b834552cf39da7b096292ac"
+    },
+    {
+      "path": "frontend/src/components/IOSPurchaseSettings.jsx",
+      "original_sha256": null,
+      "updated_sha256": "43448510b591d16f809f47ba56d2fc0eb1fb47284bb8782794f029bb67a60032"
+    },
+    {
+      "path": "frontend/src/components/MyAccess.jsx",
+      "original_sha256": "9e02771122e104769755aedf11978810f9cfffd4884d2e1e46ed2af62e5b32fb",
+      "updated_sha256": "99db8605ff3b24d143efafa8386b4f31a4e8b2204e709baa2a71555e0cc58a87"
+    },
+    {
+      "path": "frontend/src/components/PaymentButtons.jsx",
+      "original_sha256": "5ce34b5db040ea8161036833b66dafd67b113d825927adad948cdd7c5472b335",
+      "updated_sha256": "d036e310c374024cf317c593ed72d307a5501215280878c4885aadc34add0b70"
+    },
+    {
+      "path": "frontend/src/components/PushToggle.jsx",
+      "original_sha256": "36d6cf0a21d23ce07637cf735eee1d69b1955c8679155743160f8dbb63ed34f8",
+      "updated_sha256": "55c26a91aee8ec0249dd296075b1fce1d2b63beaf55fadd923a7062822fb9b7a"
+    },
+    {
+      "path": "frontend/src/components/RelatedProducts.jsx",
+      "original_sha256": "f7950ae8f11b4289008e5678481621469548030d1b24dd4e9f6ec708a24abc0e",
+      "updated_sha256": "1aefa15bd9a072c6cddd8baa9a1d6fc6f4c72a64e0e2c1336d2a66c83c8c46df"
+    },
+    {
+      "path": "frontend/src/index.css",
+      "original_sha256": "d8ed476a77cf3c9f8f9577884b0a32e81adde6593ee99bf45cd7235d32e2e73e",
+      "updated_sha256": "7551ea9142d1f0549c5a49f926158cb1c0a298176a301550878f23ff52210956"
+    },
+    {
+      "path": "frontend/src/index.js",
+      "original_sha256": "a6ac0c27346f5cfd0ffd75d1d192322d2cc6b1732b5ae3d13d4ece7ec1e4cc47",
+      "updated_sha256": "284b6dd6c60ec45da256697402bbd7ddec9db331a251c94d5d49934f18432a71"
+    },
+    {
+      "path": "frontend/src/lib/api.js",
+      "original_sha256": "5a5ffd31fa6fab1709ff926bd49ec17511aecb5a21edf7ec0aae4714d883530f",
+      "updated_sha256": "169ab3d0fca057a8662f4c09f009186d396a7307c1a6021d084f3e2c027170bb"
+    },
+    {
+      "path": "frontend/src/lib/auth.jsx",
+      "original_sha256": "6026d392a01123d6077b51837c3db47d96e73e51f98f2598b7ce4df93f078fcc",
+      "updated_sha256": "066b9cb5fdd130866494043ef9908029d87a79c89744ae84ec0c2880f1539e93"
+    },
+    {
+      "path": "frontend/src/lib/authRouting.js",
+      "original_sha256": "e297032e083a6165161f74144615aa4213b7802887e710f9475d46e511a349ee",
+      "updated_sha256": "0c788fdff2e41c9709042836979c18261857e19e33a708b0c1b2f4a883f281e8"
+    },
+    {
+      "path": "frontend/src/lib/commercePolicy.js",
+      "original_sha256": null,
+      "updated_sha256": "066592070ade703409f7cd312a14631b892173adf71cee45c8704742b2cf1fc3"
+    },
+    {
+      "path": "frontend/src/lib/iosCommerce.js",
+      "original_sha256": null,
+      "updated_sha256": "96bbde437a21e5052b58b2f2cf450f94ece03f8ede0cb09a1175f2bc29f1942d"
+    },
+    {
+      "path": "frontend/src/lib/iosPlatform.js",
+      "original_sha256": null,
+      "updated_sha256": "90392dcd60638e33b213921ae95fae00b4a1d8a5b50cc3360621194dce5ac0b4"
+    },
+    {
+      "path": "frontend/src/lib/useCommerceRefresh.js",
+      "original_sha256": null,
+      "updated_sha256": "f5638b9314c18da316dd47541b6b0a08fb171318622c7a887536eb4e84071cae"
+    },
+    {
+      "path": "frontend/src/pages/Cart.jsx",
+      "original_sha256": "f990685f60ce177e17d61d01e891b1cd4753adc080993dfef56bd2f7ef697335",
+      "updated_sha256": "4068122a576a60729d1fd692e69f9fdd01ca4be323ce4b7325a8e1a53da32e7a"
+    },
+    {
+      "path": "frontend/src/pages/Checkout.jsx",
+      "original_sha256": "e0c5a43861b89f6a1762c7a8620465d7270c3189f8c0e2d08eb549a8335751b0",
+      "updated_sha256": "355279f2d15b222a46f6db4a6cd1ab4eb1d13a8aff86b36ace8d6fd17681c0dc"
+    },
+    {
+      "path": "frontend/src/pages/ClassDetail.jsx",
+      "original_sha256": "7a59512006ed91e75e5cf1ec16fc0bc6cddc9c908dbbdf1dceabf96f369ba205",
+      "updated_sha256": "1ebb6a2dbe818fe3687787c002a706b5aecbcd7d11ba38705cfdfcbda7c9f5d9"
+    },
+    {
+      "path": "frontend/src/pages/Memberships.jsx",
+      "original_sha256": "34c0f600821c70e4c4e38dddc0aef27ab3750713fd4d016f4b882b79632c9bbc",
+      "updated_sha256": "dbc06c2fc9c7772a4506da63960f0ff1a6ad7df501f85ed21b6d251ab1f58ce7"
+    },
+    {
+      "path": "frontend/src/pages/Passes.jsx",
+      "original_sha256": "ef2637afdb1884e5b7b1afda345a02f279cc1ace0a6d7c43288899adeb56da9b",
+      "updated_sha256": "d29d2fd7b963d40859475160a870a2a41f045ec3ad6bfaa716664f4aa6d7e44c"
+    },
+    {
+      "path": "frontend/src/pages/PrivateSessions.jsx",
+      "original_sha256": "e19462018ade6c7545c58bd29112e063b097741a0c97154fa229c4192dea73d8",
+      "updated_sha256": "47e71c355b57b4f37413a72bfc2604de5bba865f8d71be14a601f85512f9c27d"
+    },
+    {
+      "path": "frontend/src/pages/ProductDetail.jsx",
+      "original_sha256": "96c0c6b00504ad6b85135998d69598ad85b171a41fc704554f5611fe40bb2352",
+      "updated_sha256": "28a0464a0e7c49f3a740fa65a9db8c5de565acd2e6e1d617386c2634c4ca500e"
+    },
+    {
+      "path": "frontend/src/pages/Profile.jsx",
+      "original_sha256": "d322694660ece7c14b3ad59764d0418c24921f2e4542baf7c59d1f799dc6b623",
+      "updated_sha256": "f08849e4f97552c905c9bd760b708f870ac0f24e3fe1d92e4acdd8348dbe2386"
+    },
+    {
+      "path": "frontend/src/pages/ProgramDetail.jsx",
+      "original_sha256": "7bbaeed9bc6e51954f4de0a937674377295175bee67bc207781af69a957a85dd",
+      "updated_sha256": "a3aa14714f214eb45143294862428d67eefa3b16ba74afc53ce28e8aefaa9592"
+    },
+    {
+      "path": "frontend/src/pages/Programs.jsx",
+      "original_sha256": "53cf857aabbf945d321da051bab90a9bfa7055bc0e37af3787c0f13bc56e22af",
+      "updated_sha256": "301c48e568c13ef7b38aeea30664c988283e75b35fb76cd009f50cb03ef941b5"
+    },
+    {
+      "path": "frontend/src/pages/Register.jsx",
+      "original_sha256": "708b8f0440aca10dfbd70ef028776fb631391a62f87d3860c29f63a5d6dc570c",
+      "updated_sha256": "e0c5b65540b38d3c5f9f1dd3ef067e8625363d2bae3ffad9bafb89934dd786e4"
+    },
+    {
+      "path": "frontend/src/pages/Shop.jsx",
+      "original_sha256": "3a8deeda3005d55a46623e3f58dac47c08ca3921b5af90a043ba9f7065d794a0",
+      "updated_sha256": "ed7316b73350e0f585b83c63a75dd494f2d8c498cc7bdd72da6fa8a9fb802973"
+    },
+    {
+      "path": "frontend/src/pages/WorkshopDetail.jsx",
+      "original_sha256": "608499ce107a2ebc53ce504692f0ac7ecb406c96347370c37fc547d0477a0c1a",
+      "updated_sha256": "3a36123a7cc3eb1ffbaf6d618febf45c39e74b12df29603e7b3da534be38ed88"
+    },
+    {
+      "path": "frontend/src/pages/legal/LegalShell.jsx",
+      "original_sha256": "fefd0a37c1efebb9f2c398915b76729a690ee514517b100f6b88f88b0ecf026d",
+      "updated_sha256": "ed6c48a6d4de5d139b1070c2ee3d2cfb566c2be79a7abde5853dc9bdd80292a0"
+    },
+    {
+      "path": "frontend/src/pages/legal/Privacy.jsx",
+      "original_sha256": "51da6f4b89cfb23b79c5abd02d846b5d2318c4df7156de844b76f429f0bb0a2f",
+      "updated_sha256": "6fbc363eda4a74d2a5a11a4bbe02f8c02b47443d5837c72214944097d62e4492"
+    },
+    {
+      "path": "frontend/src/pages/legal/Terms.jsx",
+      "original_sha256": "1566468c801b02ed5a242f3a5f82e1d79d695fb5d7c6db4f1e945f51e9ef57bb",
+      "updated_sha256": "0885c9328a1d575368488667281add0f489d9cc42cc419a822d93953ead94fe4"
+    },
+    {
+      "path": "tests/ios_commerce/conftest.py",
+      "original_sha256": null,
+      "updated_sha256": "2ecc62eb576cab0b3cc1e1a81d81fdf7ef83949ae96d636ca62d36ecebb4108d"
+    },
+    {
+      "path": "tests/ios_commerce/test_apple_delivery.py",
+      "original_sha256": null,
+      "updated_sha256": "43716a46127d06c2526a7518bc9f7ae36c2be0c6e095f33a8391cb70114fe7b3"
+    },
+    {
+      "path": "tests/ios_commerce/test_paypal_and_deletion.py",
+      "original_sha256": null,
+      "updated_sha256": "06b608be9699ec1c79fee93391dbfb3aa32c720b723ede31c341fff7bb5de3a8"
+    },
+    {
+      "path": "tests/ios_commerce/test_policy.py",
+      "original_sha256": null,
+      "updated_sha256": "84bcda1a1ade3d0cc8f9c0989154ec833ac9faa11fdcfc990c0c94f8ad75477b"
+    },
+    {
+      "path": "tools/apply_update.py",
+      "original_sha256": null,
+      "updated_sha256": "4ef18c5d7dccc03ae0c3b69e48433586dbbe71d8dc40a9370e9f82be34ca2791"
+    },
+    {
+      "path": "tools/check_frontend_syntax.cjs",
+      "original_sha256": null,
+      "updated_sha256": "2caa671721972572620ee8a13642d8e0cdacccfc7b737199cd7aed7af329e260"
+    },
+    {
+      "path": "tools/export_ios_catalog.py",
+      "original_sha256": null,
+      "updated_sha256": "a93fafbac4fe65f2b1a62b963118abf4b959e7df3dc0f98ca822ecf84b56d762"
+    },
+    {
+      "path": "tools/install_apple_roots.py",
+      "original_sha256": null,
+      "updated_sha256": "327ee14b1c908c450f2285de33988fa926209bda965dac8b584c6922b356d7b5"
+    },
+    {
+      "path": "tools/test-commerce-policy.mjs",
+      "original_sha256": null,
+      "updated_sha256": "6d76f50f90fafc0652e9c307648e5cf276fa35549e82e4d60d557a64a2518120"
+    },
+    {
+      "path": "tools/validate_ios_project.py",
+      "original_sha256": null,
+      "updated_sha256": "de8da214d0dab01bda48407c9edd524c54be31dbd3435823ec1b94cf1ccafd08"
+    }
+  ]
+}

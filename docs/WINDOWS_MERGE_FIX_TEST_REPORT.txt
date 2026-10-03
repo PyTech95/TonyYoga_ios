@@ -1,0 +1,32 @@
+TonYoga Windows merge-helper tests — 3 October 2026
+
+17 automated local fixture tests PASSED.
+
+Coverage:
+- LF baseline: 84 source entries identified; 18 generated iOS entries skipped.
+- CRLF checkout accepted only when content matches the exact original hash after LF normalization.
+- Original helper's 44-conflict pattern reproduced with 41 CRLF-only files and
+  3 locally generated public files. New helper: 0 real conflicts for that fixture.
+- Actual source edits, even added whitespace, still flagged as conflicts.
+- Modified incoming source/manifest rejected.
+- Newly added source-file collisions rejected.
+- Path traversal and symlink destinations rejected.
+- Native Android changes untouched.
+- Environment/signing fixture files untouched and not included in the commit.
+- Wrong repository origin and pre-existing staged files rejected.
+- Apply creates backup and new branch; original main ref unchanged.
+- Repeat apply is idempotent.
+- Policy assertions: 23 passed; static iOS wiring check passed during the fixture run.
+- Commit and push branch logic exercised against a LOCAL bare Git repository,
+  with network push redirected for the test.
+
+NOT executed:
+- The user's actual Windows checkout was not read or modified.
+- This helper was not executed on a Windows operating system.
+- No actual GitHub remote, credential, Actions workflow, VPS, database, Apple
+  product, TestFlight build or App Review submission was accessed or changed.
+- No full npm production build, Xcode SDK compile/archive or real purchase test.
+
+The application code and prior commerce-release gates are unchanged by this
+helper release. The helper resolves import/line-ending handling, not unconfigured
+Apple products or a differing code version.

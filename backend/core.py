@@ -101,6 +101,10 @@ async def get_current_user(request: Request) -> dict:
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(401, "User not found")
+    if user.get("active") is False:
+        recovery_paths = {"/api/auth/me", "/api/auth/logout", "/api/me/account/status", "/api/me/account/cancel-deletion"}
+        if not user.get("deletion_scheduled_at") or request.url.path not in recovery_paths:
+            raise HTTPException(403, "Account is inactive or pending deletion.")
     return user
 
 

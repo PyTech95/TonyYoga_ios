@@ -1,3 +1,6 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
+import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -24,6 +27,7 @@ export default function Passes() {
       setMine(my.data);
     } catch { setMine(false); }
   };
+  useCommerceRefresh(() => load());
   useEffect(() => { load(); }, [user]);
 
   const guardSignedIn = async () => {
@@ -67,10 +71,10 @@ export default function Passes() {
                     <div className="eyebrow">{c.credits} credit{c.credits === 1 ? "" : "s"}</div>
                     <div className="serif text-2xl mt-1">{c.title}</div>
                     <div className="mt-2 flex items-baseline gap-1">
-                      <span className="serif text-4xl">€{Math.round(c.price)}</span>
-                      {isPack && <span className="text-xs text-[#B25A45] font-semibold ml-2">save €11</span>}
+                      <span className="serif text-3xl"><IOSPrice itemType={c.id} itemId={c.id} fallback={<>€{Math.round(c.price)}</>} /></span>
+                      {!isIOSApp() && isPack && <span className="text-xs text-[#B25A45] font-semibold ml-2">save €11</span>}
                     </div>
-                    <p className="text-sm text-[#545E56] mt-3 leading-relaxed">{c.description}</p>
+                    <p className="text-sm text-[#545E56] mt-3 leading-relaxed">{isIOSApp() ? `${c.credits} class credit(s). No automatic renewal.` : c.description}</p>
                     <div className="mt-5">
                       <PaymentButtons
                         itemType={c.id}

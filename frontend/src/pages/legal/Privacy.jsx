@@ -41,7 +41,7 @@ export default function Privacy() {
       <P>We process your data under the following legal bases: <strong>performance of a contract</strong> (to provide the Service you signed up for), <strong>legitimate interests</strong> (to secure and improve the Service), <strong>consent</strong> (for optional marketing emails, which you can withdraw at any time), and <strong>legal obligation</strong> (to retain financial records for tax purposes).</P>
 
       <H2>4. Sharing & processors</H2>
-      <P>We share data only with trusted service providers who process it on our behalf, including: Stripe and PayPal (payments), our email provider (transactional email), Printful (order fulfilment for physical goods), Zoom (live classes), and OpenAI (the AI assistant). Each processes data under its own agreement and only as needed to provide its service. We never sell your personal data.</P>
+      <P>We share data only with trusted service providers who process it on our behalf, including: Apple (In-App Purchase transactions), Stripe and PayPal (eligible external payments), our email provider (transactional email), Printful (order fulfilment for physical goods), Zoom (live classes), and OpenAI (the AI assistant). Each processes data under its own agreement and only as needed to provide its service. We never sell your personal data.</P>
 
       <H2>5. International transfers</H2>
       <P>Some processors may be located outside the European Economic Area. Where that happens, transfers are protected by appropriate safeguards such as the European Commission's Standard Contractual Clauses.</P>
@@ -65,7 +65,7 @@ export default function Privacy() {
       <P>You can exercise most of these rights directly in the app, or by emailing <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#B25A45] hover:underline">{CONTACT_EMAIL}</a>. You also have the right to lodge a complaint with the Spanish Data Protection Agency (AEPD).</P>
 
       <H2>8. Deleting your account</H2>
-      <P>You can permanently delete your account and personal data at any time from <strong>Profile → Delete account</strong> in the app, or via our <Link to="/account-deletion" className="text-[#B25A45] hover:underline">Account & Data Deletion</Link> page. Deletion takes effect after a 30-day grace period during which you can cancel by signing back in.</P>
+      <P>You can permanently delete your account and personal data at any time from <strong>Profile → Delete account</strong> in the app, or via our <Link to="/account-deletion" className="text-[#B25A45] hover:underline">Account & Data Deletion</Link> page. Deletion takes effect after a 30-day grace period during which you can sign back in and explicitly select Profile → Cancel deletion before the deadline.</P>
 
       <H2>9. Children</H2>
       <P>The Service is not directed at children under 16. We do not knowingly collect data from children. If you believe a child has provided us data, contact us and we will remove it.</P>
@@ -78,6 +78,7 @@ export default function Privacy() {
 
       <H2>12. Contact</H2>
       <P>{LEGAL_NAME}, Málaga, Spain. Email: <a href={`mailto:${CONTACT_EMAIL}`} className="text-[#B25A45] hover:underline">{CONTACT_EMAIL}</a>.</P>
+    <H2>Apple purchases and optional AI</H2><P>For App Store purchases we retain the Apple transaction identifier, product identifier, purchase/expiry/refund state and a random purchase-account token linked to your TonYoga account to deliver and restore access. We never receive your Apple password or full card details. The iOS version does not send the website analytics events. Using the AI assistant on iOS is optional and requires consent before questions or audio are sent to TonYoga and OpenAI.</P>
     </LegalShell>
   );
 }

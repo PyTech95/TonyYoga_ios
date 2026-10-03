@@ -560,6 +560,8 @@ async def _fulfill_payment(txn: dict):
     if txn.get("item_type") == "private_session" and txn.get("fulfilled_at"):
         return
     item_type = txn["item_type"]; item_id = txn["item_id"]; user_id = txn["user_id"]
+    delivery_id = "payment:" + str(txn["id"])
+    paid_at = txn.get("completed_at") or txn.get("created_at") or now_utc().isoformat()
     # Safety: if the abandonment sweeper already refunded this txn's reserved credit
     # but the gateway payment landed late, re-consume that credit so it isn't double-spent.
     if txn.get("credit_released") and (txn.get("credit_applied") or 0) > 0:
@@ -571,7 +573,7 @@ async def _fulfill_payment(txn: dict):
         days_per_cycle = {"weekly": 7, "monthly": 30, "quarterly": 90, "yearly": 365}.get(plan["billing_cycle"], 30)
         trial_days = int(txn.get("trial_days") or plan.get("trial_days") or 0)
         is_trialing = txn.get("stripe_subscription_status") == "trialing"
-        now = now_utc()
+        now = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
         # For trialing subs, end_date = now + trial; otherwise = now + full billing cycle.
         period_days = trial_days if is_trialing else days_per_cycle
         end_date = now + timedelta(days=period_days)
@@ -583,7 +585,7 @@ async def _fulfill_payment(txn: dict):
                     "referrer_id": user["referred_by"], "referred_user_id": user_id, "reward_granted": False,
                 })
                 if ref:
-                    referrer_sub = await db.subscriptions.find_one({"user_id": user["referred_by"], "status": "active"})
+                    referrer_sub = await db.subscriptions.find_one({"user_id": user["referred_by"], "status": "active", "source": {"$ne": "apple_iap"}})
                     if referrer_sub:
                         end = datetime.fromisoformat(referrer_sub["end_date"]) + timedelta(days=30)
                         next_bill = datetime.fromisoformat(referrer_sub["next_billing_date"]) + timedelta(days=30)
@@ -601,9 +603,9 @@ async def _fulfill_payment(txn: dict):
                         {"$set": {"status": "converted", "reward_granted": True, "converted_at": now_utc().isoformat()}},
                     )
         await db.subscriptions.update_one(
-            {"user_id": user_id, "plan_id": item_id, "status": {"$in": ["active", "trialing"]}},
+            {"_id": delivery_id},
             {"$set": {
-                "id": gen_id(), "user_id": user_id, "plan_id": item_id,
+                "id": delivery_id, "user_id": user_id, "plan_id": item_id,
                 "status": "trialing" if is_trialing else "active",
                 "stripe_subscription_id": txn.get("stripe_subscription_id"),
                 "start_date": now.isoformat(),
@@ -614,10 +616,10 @@ async def _fulfill_payment(txn: dict):
             upsert=True,
         )
     elif item_type == "program":
-        await db.program_purchases.insert_one({
-            "id": gen_id(), "user_id": user_id, "program_id": item_id,
-            "purchased_at": now_utc().isoformat(),
-        })
+        await db.program_purchases.update_one({"_id": delivery_id}, {"$setOnInsert": {
+            "id": delivery_id, "user_id": user_id, "program_id": item_id,
+            "purchased_at": paid_at,
+        }}, upsert=True)
         # Enrollment record drives access checks + drip start date.
         await db.program_enrollments.update_one(
             {"user_id": user_id, "program_id": item_id},
@@ -638,14 +640,15 @@ async def _fulfill_payment(txn: dict):
         # Decrement stock (physical only) and create a paid order.
         prod = await db.products.find_one({"id": item_id}, {"_id": 0})
         if prod and prod.get("type") != "ebook":
-            await db.products.update_one({"id": item_id}, {"$inc": {"stock_qty": -int(txn.get("quantity", 1))}})
-        await db.orders.insert_one({
-            "id": gen_id(), "user_id": user_id,
+            await db.products.update_one({"id": item_id, "fulfilled_order_markers": {"$ne": delivery_id}},
+                {"$inc": {"stock_qty": -int(txn.get("quantity", 1))}, "$addToSet": {"fulfilled_order_markers": delivery_id}})
+        await db.orders.update_one({"_id": delivery_id}, {"$setOnInsert": {
+            "id": delivery_id, "user_id": user_id,
             "items": [{"product_id": item_id, "quantity": txn.get("quantity", 1),
                        "title": (prod or {}).get("title")}],
             "total": txn["amount"], "currency": txn["currency"],
-            "status": "paid", "created_at": now_utc().isoformat(),
-        })
+            "status": "paid", "created_at": paid_at,
+        }}, upsert=True)
     elif item_type == "cart":
         # Mark the existing order as paid + decrement inventory for each line item.
         order_id = txn.get("metadata", {}).get("order_id") or txn.get("item_id")
@@ -657,7 +660,12 @@ async def _fulfill_payment(txn: dict):
                     if pid:
                         prod = await db.products.find_one({"id": pid}, {"_id": 0, "type": 1})
                         if not prod or prod.get("type") != "ebook":
-                            await db.products.update_one({"id": pid}, {"$inc": {"stock_qty": -qty}})
+                            marker = f"cart:{order_id}:{pid}"
+                            # Aggregate variants of the same product; the product write is atomic.
+                            product_qty = sum(int(x.get("quantity", 1)) for x in order.get("items", []) if x.get("product_id") == pid)
+                            await db.products.update_one(
+                                {"id": pid, "fulfilled_order_markers": {"$ne": marker}},
+                                {"$inc": {"stock_qty": -product_qty}, "$addToSet": {"fulfilled_order_markers": marker}})
                 await db.orders.update_one(
                     {"id": order_id},
                     {"$set": {"status": "paid", "paid_at": now_utc().isoformat()}},
@@ -672,7 +680,7 @@ async def _fulfill_payment(txn: dict):
         reservation_id = txn.get("metadata", {}).get("reservation_id") or txn.get("item_id")
         if reservation_id:
             await db.workshop_registrations.update_one(
-                {"id": reservation_id},
+                {"id": reservation_id, "status": {"$nin": ["paid_in_full", "cancelled"]}},
                 {"$set": {"status": "deposit_paid", "deposit_paid_at": now_utc().isoformat()}},
             )
             try:
@@ -698,18 +706,18 @@ async def _fulfill_payment(txn: dict):
                 logger.warning(f"retreat balance email failed for {reservation_id}: {e}")
     elif item_type == "teacher_training":
         t = TEACHER_TRAINING_CATALOG.get(item_id, {})
-        await db.teacher_training_registrations.insert_one({
-            "id": gen_id(), "user_id": user_id, "user_email": txn.get("user_email"),
+        await db.teacher_training_registrations.update_one({"_id": delivery_id}, {"$setOnInsert": {
+            "id": delivery_id, "user_id": user_id, "user_email": txn.get("user_email"),
             "training_id": item_id, "training_name": t.get("name"),
             "dates": t.get("dates"), "amount": txn.get("amount"), "currency": txn.get("currency", "eur"),
-            "status": "confirmed", "created_at": now_utc().isoformat(),
-        })
+            "status": "confirmed", "created_at": paid_at,
+        }}, upsert=True)
     elif item_type in ("drop_in", "class_pack"):
         credits = 1 if item_type == "drop_in" else 5
         await db.class_passes.update_one(
-            {"user_id": user_id, "active": True},
-            {"$inc": {"remaining": credits},
-             "$setOnInsert": {"id": gen_id(), "user_id": user_id, "active": True, "created_at": now_utc().isoformat()}},
+            {"_id": delivery_id},
+            {"$setOnInsert": {"id": delivery_id, "user_id": user_id, "active": True,
+                "remaining": credits, "created_at": paid_at}},
             upsert=True,
         )
     elif item_type == "private_session":

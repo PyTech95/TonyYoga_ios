@@ -146,9 +146,11 @@ async def magic_link_request(payload: MagicLinkRequest):
     token_plain = await _create_magic_link(email, payload.type, timedelta(hours=24))
     frontend_url = os.environ.get("FRONTEND_URL", "")
     magic_url = f"{frontend_url}/magic-link?token={token_plain}"
-    logger.info(f"[MAGIC LINK to {email}] {magic_url}")
     sent = await email_magic_link(email, magic_url, payload.type)
-    return {"ok": True, "magic_url": magic_url if not sent else None, "email_sent": sent, "expires_in_hours": 24}
+    if not sent:
+        await db.magic_link_tokens.delete_one({"token_sha": sha256_hex(token_plain)})
+        raise HTTPException(503, "Email delivery is unavailable. Please use password sign-in or try again later.")
+    return {"ok": True, "email_sent": True, "expires_in_hours": 24}
 
 
 @api.post("/auth/magic-link/consume")
@@ -162,7 +164,9 @@ async def magic_link_consume(payload: MagicLinkConsume, response: Response):
     expires = datetime.fromisoformat(matched["expires_at"])
     if expires < now_utc():
         raise HTTPException(400, "Magic link expired")
-    await db.magic_link_tokens.update_one({"id": matched["id"]}, {"$set": {"used_at": now_utc().isoformat()}})
+    consumed = await db.magic_link_tokens.update_one({"id": matched["id"], "used_at": None}, {"$set": {"used_at": now_utc().isoformat()}})
+    if consumed.modified_count != 1:
+        raise HTTPException(400, "This sign-in link has already been used.")
 
     user = await db.users.find_one({"email": matched["email"]})
     if not user:
@@ -174,6 +178,8 @@ async def magic_link_consume(payload: MagicLinkConsume, response: Response):
             "active": True, "created_at": now_utc().isoformat(),
         }
         await db.users.insert_one(user)
+    if user.get("active") is False and not user.get("deletion_scheduled_at"):
+        raise HTTPException(403, "Account disabled")
     token = create_access_token(user["id"], user["email"], user["role"])
     response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=7 * 86400, path="/")
     user.pop("password_hash", None); user.pop("_id", None)
@@ -194,7 +200,6 @@ async def forgot_password(payload: ForgotPassword):
     })
     frontend_url = os.environ.get("FRONTEND_URL", "")
     reset_url = f"{frontend_url}/reset-password?token={token_plain}"
-    logger.info(f"[PASSWORD RESET for {payload.email}] {reset_url}")
     await email_password_reset(payload.email.lower(), reset_url)
     return {"ok": True}
 

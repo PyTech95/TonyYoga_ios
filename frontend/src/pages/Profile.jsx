@@ -1,3 +1,7 @@
+import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPurchaseSettings from "@/components/IOSPurchaseSettings";
+import PaymentButtons from "@/components/PaymentButtons";
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { toast } from "sonner";
@@ -20,7 +24,7 @@ function formatWhen(iso) {
 }
 
 export default function Profile() {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const nav = useNavigate();
   const [bookings, setBookings] = useState(null);
   const [sub, setSub] = useState(null);
@@ -55,8 +59,8 @@ export default function Profile() {
     finally { setCancelBusy(false); setCancelTarget(null); }
   };
 
-  useEffect(() => {
-    (async () => {
+  const loadProfile = async () => {
+      api.get("/me/account/status").then(({ data }) => setDelScheduledAt(data?.deletion_scheduled_at || null)).catch(() => {});
       try {
         const [b, s, r, c] = await Promise.all([
           api.get("/bookings/mine"),
@@ -69,16 +73,17 @@ export default function Profile() {
         setRetreats(r.data || []);
         setCredit(c.data?.store_credit || 0);
         api.get("/me/downloads").then(({ data }) => setDownloads(data || [])).catch(() => setDownloads([]));
-        api.get("/me/account/status").then(({ data }) => setDelScheduledAt(data?.deletion_scheduled_at || null)).catch(() => {});
       } catch { setBookings([]); }
-    })();
-  }, []);
+  };
+  useEffect(() => { loadProfile(); }, []);
+  useCommerceRefresh(loadProfile);
 
   const requestDeletion = async () => {
     setDelBusy(true);
     try {
       const { data } = await api.delete("/me/account", { data: { password: delPassword || null, reason: delReason || null } });
       setDelScheduledAt(data?.deletion_scheduled_at || null);
+      await refresh();
       setDelOpen(false); setDelPassword(""); setDelReason("");
       toast.success("Account scheduled for deletion. You can cancel within 30 days.");
     } catch (e) {
@@ -91,6 +96,8 @@ export default function Profile() {
     try {
       await api.post("/me/account/cancel-deletion");
       setDelScheduledAt(null);
+      await refresh();
+      loadProfile();
       toast.success("Welcome back — your account is active again.");
     } catch (e) {
       toast.error(e?.response?.data?.detail || "Could not cancel");
@@ -203,7 +210,7 @@ export default function Profile() {
         <PushToggle />
 
         {/* Gift card / store credit */}
-        <section data-testid="gift-card-section" className="rounded-3xl bg-white border border-[#E5E6DF] p-5">
+        {!isIOSApp() && (<section data-testid="gift-card-section" className="rounded-3xl bg-white border border-[#E5E6DF] p-5">
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <Gift className="h-4 w-4 text-[#B25A45]" />
@@ -230,7 +237,7 @@ export default function Profile() {
               <span className="text-[13px] font-semibold text-[#B25A45]">Shop →</span>
             </Link>
           )}
-        </section>
+        </section>)}
 
         {/* Digital library — purchased eBooks */}
         {downloads.length > 0 && (
@@ -280,7 +287,9 @@ export default function Profile() {
                           : `Pending deposit €${Math.round(r.deposit_eur)}`}
                       </div>
                     </div>
-                    {r.status === "deposit_paid" && (
+                    {r.status === "deposit_paid" && (isIOSApp() ? (
+                      <PaymentButtons itemType="workshop_balance" itemId={r.id} testIdPrefix={`retreat-balance-${r.id}`} />
+                    ) : (
                       <button
                         onClick={() => payBalance(r)}
                         disabled={payBusy === r.id}
@@ -289,7 +298,7 @@ export default function Profile() {
                       >
                         {payBusy === r.id ? "…" : `Pay €${Math.round(r.balance_eur)}`}
                       </button>
-                    )}
+                    ))}
                   </div>
                   {!["cancelled", "waitlisted", "seat_offered"].includes(r.status) && (
                     <button
@@ -373,10 +382,10 @@ export default function Profile() {
             <Sparkles className="h-5 w-5 text-[#B25A45] mb-2" />
             <div className="text-sm font-semibold">Memberships</div>
           </Link>
-          <Link to="/referrals" data-testid="profile-link-referrals" className="rounded-2xl bg-white border border-[#E5E6DF] p-4 hover:border-[#B25A45] transition">
+          {!isIOSApp() && (<Link to="/referrals" data-testid="profile-link-referrals" className="rounded-2xl bg-white border border-[#E5E6DF] p-4 hover:border-[#B25A45] transition">
             <Gift className="h-5 w-5 text-[#B25A45] mb-2" />
             <div className="text-sm font-semibold">Invite a friend</div>
-          </Link>
+          </Link>)}
           <Link to="/shop" data-testid="profile-link-shop" className="rounded-2xl bg-white border border-[#E5E6DF] p-4 hover:border-[#B25A45] transition">
             <ShoppingBag className="h-5 w-5 text-[#B25A45] mb-2" />
             <div className="text-sm font-semibold">Shop</div>
@@ -400,6 +409,8 @@ export default function Profile() {
             </Link>
           )}
         </section>
+
+        <IOSPurchaseSettings />
 
         {/* Danger zone — account deletion (GDPR / store compliance) */}
         <section data-testid="profile-danger-zone" className="rounded-3xl bg-white border border-[#EED9D2] p-6">

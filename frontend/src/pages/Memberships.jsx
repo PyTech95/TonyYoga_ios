@@ -1,3 +1,5 @@
+import { isIOSApp } from "@/lib/iosPlatform";
+import IOSPrice from "@/components/IOSPrice";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Check, Sparkles } from "lucide-react";
@@ -48,8 +50,8 @@ export default function Memberships() {
                     <div className="eyebrow" style={{ color: highlight ? "#B25A45" : undefined }}>{tr(`memb.cycle_${p.billing_cycle}`)}</div>
                     <div className="serif text-3xl mt-1">{t(p.name)}</div>
                     <div className="mt-2 flex items-baseline gap-1">
-                      <span className="serif text-4xl">€{Math.round(p.price)}</span>
-                      <span className={`text-sm ${highlight ? "text-white/60" : "text-[#6B7269]"}`}>/ {p.billing_cycle === "yearly" ? tr("memb.per_year") : tr("memb.per_month")}</span>
+                      <span className="serif text-3xl"><IOSPrice itemType="membership" itemId={p.id} fallback={<>€{Math.round(p.price)}</>} /></span>
+                      {!isIOSApp() && <span className={`text-sm ${highlight ? "text-white/60" : "text-[#6B7269]"}`}>/ {p.billing_cycle === "yearly" ? tr("memb.per_year") : tr("memb.per_month")}</span>}
                     </div>
                     <p className={`text-sm mt-3 leading-relaxed ${highlight ? "text-white/70" : "text-[#545E56]"}`}>{t(p.description)}</p>
 
@@ -71,7 +73,7 @@ export default function Memberships() {
                         testIdPrefix={`plan-${p.id}`}
                       />
                     </div>
-                    {p.trial_days > 0 && (
+                    {!isIOSApp() && p.trial_days > 0 && (
                       <div className={`text-[11px] text-center mt-3 uppercase tracking-widest ${highlight ? "text-white/50" : "text-[#839682]"}`}>
                         {p.trial_days} {tr("memb.free_trial")}
                       </div>

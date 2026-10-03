@@ -1,3 +1,4 @@
+import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -18,7 +19,7 @@ export default function ClassDetail() {
   const [busy, setBusy] = useState(false);
   const isStaff = !!user && ["admin", "instructor"].includes(user.role);
 
-  useEffect(() => {
+  const loadClass = () => {
     api.get(`/class-instances/${id}`).then(({ data }) => setC(data)).catch(() => setC(false));
     if (user && !isStaff) {
       api.get("/bookings/mine").then(({ data }) => {
@@ -26,7 +27,9 @@ export default function ClassDetail() {
         setBooking(b || null);
       }).catch(() => {});
     }
-  }, [id, user, isStaff]);
+  };
+  useEffect(loadClass, [id, user, isStaff]);
+  useCommerceRefresh(loadClass);
 
   // Fetch the gated recording status once we know the viewer may access it.
   useEffect(() => {
