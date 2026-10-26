@@ -1,8 +1,9 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Calendar, GraduationCap, Play, Flower2, Mic, ShoppingBag, Sparkles, Ticket, MountainSnow, User, Heart, Trophy, LifeBuoy, Compass, ChevronRight } from "lucide-react";
+import { Calendar, GraduationCap, Play, Flower2, Mic, ShoppingBag, Sparkles, Ticket, MountainSnow, User, Heart, Trophy, LifeBuoy, Compass, ChevronRight, FileText, Newspaper } from "lucide-react";
 import PageHeader from "@/components/PageHeader";
+import { useCmsPages } from "@/lib/siteData";
 
 const GROUPS = [
   {
@@ -43,12 +44,25 @@ const GROUPS = [
 
 export default function MenuHub() {
   const [challengesEnabled, setChallengesEnabled] = useState(false);
+  // Pages marked "Show in app menu" in Admin → Custom pages, plus the Journal.
+  const cmsPages = useCmsPages().filter((p) => p.show_in_app_menu);
+  const groups = [
+    ...GROUPS.slice(0, 3),
+    {
+      title: "About Tony Yoga",
+      items: [
+        ...cmsPages.map((p) => ({ to: `/${p.slug}`, label: p.menu_label || p.title, desc: p.eyebrow || "", icon: FileText, tid: `menu-page-${p.slug}` })),
+        { to: "/news", label: "Journal", desc: "News and writing from Tony", icon: Newspaper, tid: "menu-news" },
+      ],
+    },
+    ...GROUPS.slice(3),
+  ];
   useEffect(() => { api.get("/settings/public").then(({ data }) => setChallengesEnabled(!!data.challenges_enabled)).catch(() => {}); }, []);
   return (
     <div data-testid="menu-hub-page">
       <PageHeader eyebrow="Everything in one place" title="Menu" testId="menu-header" />
       <div className="mx-auto max-w-2xl px-4 pb-10 space-y-7">
-        {GROUPS.map((g) => (
+        {groups.map((g) => (
           <section key={g.title}>
             <h2 className="eyebrow !text-[#839682] mb-3 px-1">{g.title}</h2>
             <div className="rounded-3xl bg-white border border-[#E5E6DF] overflow-hidden divide-y divide-[#EFEFE9]">

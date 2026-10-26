@@ -5,6 +5,7 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
+import { isNativeApp } from "@/lib/platform";
 
 export function CheckoutSuccess() {
   const [params] = useSearchParams();
@@ -16,6 +17,10 @@ export function CheckoutSuccess() {
   const mobileReturn = params.get("mobile_return") === "ios";
   const isCredit = params.get("credit") === "1";
   const paypalToken = params.get("token"); // PayPal appends ?token=<order_id> on return
+  // Started inside the iOS / Android app, finished here in the phone's browser:
+  // confirm the payment, then send the member back to the app instead of the website.
+  const fromApp = params.get("app") === "1" && !isNativeApp();
+  const done = () => { if (!fromApp && !mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500); };
 
   useEffect(() => {
     let cancelled = false;
@@ -24,7 +29,7 @@ export function CheckoutSuccess() {
     if (isCredit) {
       setStatus("paid");
       toast.success("You're in.");
-      if (!mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500);
+      done();
       return () => { cancelled = true; };
     }
 
@@ -37,7 +42,7 @@ export function CheckoutSuccess() {
           if (data.status === "captured" || data.status === "already_captured") {
             setStatus("paid");
             toast.success("Welcome to Tony Yoga.");
-            if (!mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500);
+            done();
           } else {
             setStatus("error");
           }
@@ -57,7 +62,7 @@ export function CheckoutSuccess() {
         if (data.payment_status === "paid") {
           setStatus("paid");
           toast.success("Welcome to Tony Yoga.");
-          if (!mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500);
+          done();
           return;
         }
         if (data.status === "expired") { setStatus("expired"); return; }
@@ -67,7 +72,7 @@ export function CheckoutSuccess() {
     };
     poll();
     return () => { cancelled = true; };
-  }, [sessionId, tries, nav, isPaypal, paypalToken, isCredit, mobileReturn]);
+  }, [sessionId, tries, nav, isPaypal, paypalToken, isCredit, mobileReturn]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <div data-testid="checkout-success">
@@ -78,9 +83,17 @@ export function CheckoutSuccess() {
           <div className="animate-fade-up">
             <CheckCircle2 className="h-14 w-14 text-[#839682] mx-auto mb-4" />
             <div className="serif text-2xl">You're in.</div>
-            <p className="text-sm text-[#6B7269] mt-2">{mobileReturn ? "Payment is confirmed for the TonYoga account you used to book." : "Redirecting to your profile…"}</p>
-            {mobileReturn && <a className="pill pill-primary mt-5" href="com.tonyoga.app://checkout-return">Return to TonYoga</a>}
-            {mobileReturn && <p className="text-xs mt-3">You can also reopen TonYoga manually. The app checks the payment with our server.</p>}
+            {mobileReturn ? (
+              <>
+                <p className="text-sm text-[#6B7269] mt-2">Payment is confirmed for the TonYoga account you used to book.</p>
+                <a className="pill pill-primary mt-5" href="com.tonyoga.app://checkout-return">Return to TonYoga</a>
+                <p className="text-xs mt-3">You can also reopen TonYoga manually. The app checks the payment with our server.</p>
+              </>
+            ) : fromApp ? (
+              <p className="text-sm text-[#6B7269] mt-2" data-testid="checkout-return-to-app">Payment complete. You can close this page and go back to the Tony Yoga app — your purchase is ready there.</p>
+            ) : (
+              <p className="text-sm text-[#6B7269] mt-2">Redirecting to your profile…</p>
+            )}
           </div>
         )}
         {(status === "error" || status === "bad" || status === "timeout") && (
@@ -112,7 +125,7 @@ export function CheckoutCancel() {
       <PageHeader eyebrow="Checkout" title="Payment cancelled." testId="checkout-cancel-header" />
       <div className="mx-auto max-w-md px-6 py-4 text-center">
         <XCircle className="h-14 w-14 text-[#B25A45] mx-auto mb-4" />
-        <p className="text-sm text-[#6B7269] mb-3">No charge was made. Come back anytime.</p>
+        <p className="text-sm text-[#6B7269] mb-3">No charge was made. {params.get("app") === "1" && !isNativeApp() ? "You can close this page and go back to the Tony Yoga app." : "Come back anytime."}</p>
         {released != null && (
           <p className="text-sm text-[#3E5B3E] mb-6" data-testid="checkout-credit-restored">
             Your €{released.toFixed(2)} gift-card credit has been returned to your account.

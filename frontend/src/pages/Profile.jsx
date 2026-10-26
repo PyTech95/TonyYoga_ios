@@ -9,6 +9,7 @@ import { LogOut, User as UserIcon, Sparkles, ShoppingBag, GraduationCap, Gift, S
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import { usePaymentProviders } from "@/lib/providers";
+import { checkoutContext, markExternalCheckout } from "@/lib/platform";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import PushToggle from "@/components/PushToggle";
@@ -124,9 +125,9 @@ export default function Profile() {
       const { data } = await api.post(endpoint, {
         item_type: "workshop_balance",
         item_id: r.id,
-        origin_url: window.location.origin,
+        ...checkoutContext(),
       });
-      if (data?.url) window.location.href = data.url;
+      if (data?.url) { markExternalCheckout(); window.location.href = data.url; }
       else toast.error("Could not start balance checkout");
     } catch (e) { toast.error(e?.response?.data?.detail || "Failed"); }
     finally { setPayBusy(null); }
@@ -224,7 +225,10 @@ export default function Profile() {
               value={gcCode}
               onChange={(e) => setGcCode(e.target.value.toUpperCase())}
               placeholder="GIFT-XXXXXXXX"
-              className="flex-1 rounded-xl border border-[#E5E6DF] bg-[#FAFAF7] px-3 py-2 text-sm tracking-wide focus:outline-none focus:border-[#B25A45]"
+              autoCapitalize="characters"
+              autoCorrect="off"
+              spellCheck={false}
+              className="min-w-0 flex-1 rounded-xl border border-[#E5E6DF] bg-[#FAFAF7] px-3 py-2 text-sm tracking-wide focus:outline-none focus:border-[#B25A45]"
             />
             <button onClick={redeemGift} disabled={gcBusy} data-testid="gift-card-redeem" className="pill pill-primary !py-2 !px-4 !text-xs shrink-0">
               {gcBusy ? "…" : "Redeem"}

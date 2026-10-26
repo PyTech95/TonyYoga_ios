@@ -56,6 +56,27 @@ def sha256_hex(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 
+# ---------------- Checkout return URLs ----------------
+# Inside the iOS / Android app the page origin is the app's local web server
+# (https://localhost or capacitor://localhost). Payment pages open in the phone's
+# browser, which cannot reach that address, so after paying the buyer would land on
+# an error page and a PayPal order would never be captured. Send them to the public
+# website instead (FRONTEND_URL) and tag the URL so the page tells them to return
+# to the app.
+NATIVE_APP_ORIGINS = {"https://localhost", "http://localhost", "capacitor://localhost", "ionic://localhost"}
+
+
+def checkout_return_base(origin_url: Optional[str], client: Optional[str] = None):
+    """Return (base_url, extra_query) for payment success/cancel URLs."""
+    origin = (origin_url or "").strip().rstrip("/")
+    from_app = client == "app" or origin in NATIVE_APP_ORIGINS
+    if origin in NATIVE_APP_ORIGINS or not origin.startswith(("http://", "https://")):
+        frontend = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+        if frontend:
+            origin = frontend
+    return origin, ("&app=1" if from_app else "")
+
+
 # ---------------- Password helpers ----------------
 def hash_password(pw: str) -> str:
     return bcrypt.hashpw(pw.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")

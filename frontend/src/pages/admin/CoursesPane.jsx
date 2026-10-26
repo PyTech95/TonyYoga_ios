@@ -7,6 +7,7 @@ import Spinner from "@/components/Spinner";
 import { parseYouTubeId, isYouTube, secToMMSS, mmssToSec, youTubeThumb } from "@/lib/youtube";
 import { Field, inputCls } from "./shared";
 import { AccessTermFields, defaultTerm, termError } from "@/components/AccessTerm";
+import { ContentImageInput } from "@/components/ContentImageInput";
 
 function LessonsEditor({ programId }) {
   const [lessons, setLessons] = useState(null);
@@ -393,7 +394,7 @@ function CoursesPane() {
             </div>
           </Field>
           {form.price_model === "subscription" && <AccessTermFields value={form.access_term} onChange={(term) => set("access_term", term)} prefix="course" />}
-          <Field label="Cover image URL"><input data-testid="course-cover" className={inputCls2} value={form.cover_image} onChange={(e) => set("cover_image", e.target.value)} placeholder="https://…" /></Field>
+          <ContentImageInput absolute label="Course cover photo (upload or paste a link)" tid="course-cover" value={form.cover_image} onChange={(v) => set("cover_image", v)} hint="Shown on the course card, the course page and in the app." />
           <Field label="Demo / intro video (YouTube)" hint="Plays at the top of the course page for everyone — enrolled or not. Leave blank to auto-use the first lesson clip.">
             <input data-testid="course-demo-video" className={inputCls2} value={form.demo_video_url} onChange={(e) => set("demo_video_url", e.target.value)} placeholder="https://www.youtube.com/watch?v=…" />
             {form.demo_video_url && !parseYouTubeId(form.demo_video_url) && <div className="text-xs text-[#B25A45] mt-1">Not a recognized YouTube link.</div>}

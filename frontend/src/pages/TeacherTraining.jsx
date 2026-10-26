@@ -5,9 +5,8 @@ import { api } from "@/lib/api";
 import PaymentButtons from "@/components/PaymentButtons";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
-
-const HERO_IMG = "https://images.unsplash.com/photo-1608405059861-b21a68ae76a2?crop=entropy&cs=srgb&fm=jpg&q=85&w=1400";
-const GRP_IMG = "https://images.unsplash.com/photo-1683056255281-e52a141924f0?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200";
+import { TONY } from "@/lib/brandMedia";
+import { useSiteImages, siteImage } from "@/lib/siteData";
 
 const PILLARS = [
   { icon: Leaf, title: "Philosophy & history", body: "The roots of the Ghosh lineage, texts and the why behind the practice." },
@@ -17,6 +16,9 @@ const PILLARS = [
 ];
 
 export default function TeacherTraining() {
+  const images = useSiteImages();
+  const HERO_IMG = siteImage(images, "tt_page_hero", TONY.ttHero);
+  const GRP_IMG = siteImage(images, "tt_page_group", TONY.groupWide);
   const [tiers, setTiers] = useState(null);
   const bookRef = useRef(null);
 
@@ -52,7 +54,7 @@ export default function TeacherTraining() {
             </div>
           </div>
           <div className="relative">
-            <img src={HERO_IMG} alt="Yoga teacher training" className="rounded-3xl w-full aspect-[4/5] object-cover shadow-xl" />
+            <img src={HERO_IMG} alt="Tony Sanchez teaching in the studio" className="rounded-3xl w-full aspect-[4/5] object-cover shadow-xl" />
             <div className="absolute -bottom-4 -left-2 sm:left-4 bg-[#1C221F] text-white rounded-2xl px-4 py-3 shadow-lg">
               <div className="eyebrow !text-[#E0A38F]">Certified paths</div>
               <div className="serif text-lg">200 · 300 · 500 hours</div>
@@ -64,7 +66,7 @@ export default function TeacherTraining() {
       {/* Mentor */}
       <section className="bg-white border-y border-[#E5E6DF]">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-12 sm:py-16 grid lg:grid-cols-2 gap-10 items-center">
-          <img src={GRP_IMG} alt="Training group practice" className="rounded-3xl w-full aspect-video object-cover shadow-md order-2 lg:order-1" />
+          <img src={GRP_IMG} alt="Tony Sanchez with a group of students" className="rounded-3xl w-full aspect-video object-cover shadow-md order-2 lg:order-1" />
           <div className="order-1 lg:order-2">
             <div className="eyebrow !text-[#B25A45]">Your mentor</div>
             <h2 className="serif text-3xl sm:text-4xl mt-2 text-[#1C221F]">More than just a mentor</h2>

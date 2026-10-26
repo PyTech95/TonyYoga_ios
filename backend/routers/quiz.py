@@ -10,7 +10,7 @@ import os
 from fastapi import Request, HTTPException
 from pydantic import BaseModel
 
-from core import api, db, gen_id, now_utc, get_optional_user, require_role
+from core import api, db, gen_id, now_utc, get_optional_user, require_role, checkout_return_base
 
 LEVEL_RANK = {"beginner": 0, "intermediate": 1, "advanced": 2}
 
@@ -146,7 +146,8 @@ async def quiz_lead(payload: QuizLead, request: Request):
     if "@" not in email or "." not in email.split("@")[-1]:
         raise HTTPException(400, "Please enter a valid email.")
     program, plan, reasons = await _compute_recommendation(payload.answers)
-    origin = (payload.origin_url or os.environ.get("FRONTEND_URL", "")).rstrip("/")
+    # Links in the email must open on the public site, not the app's internal origin.
+    origin, _ = checkout_return_base(payload.origin_url or os.environ.get("FRONTEND_URL", ""))
     program_url = f"{origin}/programs/{program['id']}" if (origin and program) else None
     signup_url = f"{origin}/register?email={email}" if origin else None
 

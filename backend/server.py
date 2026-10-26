@@ -24,6 +24,7 @@ from routers.printful import printful_nightly_sync_tick
 from routers import challenges  # noqa: F401
 from routers import access, availability  # noqa: F401
 from routers import analytics  # noqa: F401
+from routers import cms  # noqa: F401  (admin-managed SEO, pages, packages, team)
 from routers import ios_commerce  # noqa: F401 — additive, same API and database
 
 # Set on startup so /api/health can surface why programs=0 (bad MONGO_URL / seed exception).

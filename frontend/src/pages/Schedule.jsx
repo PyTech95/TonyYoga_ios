@@ -4,6 +4,8 @@ import { MapPin, Video, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
+import { usePageSeo, SITE_URL } from "@/lib/seo";
+import { eventJsonLd } from "@/seo/seoData.mjs";
 
 const FILTERS = [
   { key: "all", label: "All" },
@@ -37,6 +39,11 @@ export default function Schedule() {
   }, [rows, filter]);
 
   const grouped = useMemo(() => groupByDay(visible), [visible]);
+  // Upcoming live classes as schema.org Events (helps Google & AI answers show times).
+  usePageSeo("/schedule", {
+    ready: !!(rows && rows.length),
+    jsonLd: rows && rows.length ? { "@context": "https://schema.org", "@graph": rows.slice(0, 20).map((c) => { const e = eventJsonLd(c, SITE_URL); delete e["@context"]; return e; }) } : null,
+  });
 
   return (
     <div data-testid="schedule-page">

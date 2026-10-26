@@ -1,0 +1,33 @@
+# Apache / LiteSpeed (e.g. Hostinger) hosting for the React build.
+# Serves the pre-rendered page for each URL (e.g. /locations/london/index.html)
+# and falls back to the app for everything else.
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /
+
+  # Never rewrite API calls or real files.
+  RewriteRule ^api/ - [L]
+  RewriteCond %{REQUEST_FILENAME} -f
+  RewriteRule ^ - [L]
+
+  # /some/page  ->  /some/page/index.html when it was pre-rendered.
+  RewriteCond %{DOCUMENT_ROOT}/$1/index.html -f
+  RewriteRule ^(.+?)/?$ /$1/index.html [L]
+
+  # Everything else is handled by the React app.
+  RewriteRule ^ /index.html [L]
+</IfModule>
+
+<IfModule mod_headers.c>
+  # Always re-check HTML so visitors and crawlers get the latest build.
+  <FilesMatch "\.(html)$">
+    Header set Cache-Control "no-cache"
+  </FilesMatch>
+  # Hashed build assets (main.1a2b3c4d.js) and fonts can be cached for a long time.
+  <FilesMatch "(\.[0-9a-f]{8}\.(js|css)|\.woff2)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+  <Files "llms.txt">
+    Header set Content-Type "text/plain; charset=utf-8"
+  </Files>
+</IfModule>

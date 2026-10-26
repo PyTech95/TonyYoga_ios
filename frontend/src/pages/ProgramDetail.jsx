@@ -15,6 +15,8 @@ import PaymentButtons from "@/components/PaymentButtons";
 import RelatedProducts from "@/components/RelatedProducts";
 import BundleOffer from "@/components/BundleOffer";
 import { AccessTermSummary } from "@/components/AccessTerm";
+import { useSeo, SITE_URL } from "@/lib/seo";
+import { courseJsonLd } from "@/seo/seoData.mjs";
 
 export default function ProgramDetail() {
   const { id } = useParams();
@@ -45,6 +47,13 @@ export default function ProgramDetail() {
       setProgress(m);
     }).catch(() => {});
   }, [user, id]);
+
+  useSeo(p ? {
+    title: `${p.title} — Online Yoga Program with Tony Sanchez | Tony Yoga`,
+    description: (p.description || `${p.title}: an on-demand yoga program by Tony Sanchez.`).slice(0, 158),
+    image: p.cover_image,
+    jsonLd: courseJsonLd(p, SITE_URL),
+  } : p === false ? { title: "Program not found | Tony Yoga", noindex: true } : null);
 
   if (p === null) return <><PageHeader back /><Spinner /></>;
   if (p === false) return <><PageHeader back title="Not found" /></>;
@@ -140,7 +149,7 @@ export default function ProgramDetail() {
                 <li key={l.id} className="rounded-2xl bg-white border border-[#E5E6DF] p-3">
                   <div className="flex items-center gap-3">
                     {/* Lesson thumbnail */}
-                    <div className="relative h-14 w-24 shrink-0 rounded-lg overflow-hidden bg-[#F2F2EC]">
+                    <div className="relative h-14 w-20 min-[400px]:w-24 shrink-0 rounded-lg overflow-hidden bg-[#F2F2EC]">
                       {l.video?.cover_image
                         ? <img src={l.video.cover_image} alt="" className="h-full w-full object-cover" />
                         : <div className="h-full w-full flex items-center justify-center text-[#9AA29B] text-xs">{idx + 1}</div>}
@@ -152,7 +161,7 @@ export default function ProgramDetail() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="text-[14px] font-semibold leading-tight truncate">{l.video?.title || "Lesson"}</div>
+                      <div className="text-[14px] font-semibold leading-tight line-clamp-2 break-words" title={l.video?.title || "Lesson"}>{l.video?.title || "Lesson"}</div>
                       <div className="text-xs text-[#6B7269] mt-0.5 flex items-center gap-2">
                         <span>{l.video?.duration_minutes || 30} min</span>
                         {isDone && <span className="text-[#839682] font-semibold">Completed</span>}
@@ -166,12 +175,12 @@ export default function ProgramDetail() {
                         </Link>
                       )
                     ) : l.drip_locked && l.available_on ? (
-                      <div data-testid={`lesson-drip-${l.id}`} className="h-8 px-3 rounded-full bg-[#F2F2EC] flex items-center gap-1 text-[10px] text-[#6B7269] shrink-0">
+                      <div data-testid={`lesson-drip-${l.id}`} className="h-8 px-2.5 sm:px-3 rounded-full bg-[#F2F2EC] flex items-center gap-1 text-[10px] text-[#6B7269] shrink-0 whitespace-nowrap">
                         <Clock className="h-3 w-3" /> Unlocks {new Date(l.available_on).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
                       </div>
                     ) : (
-                      <div data-testid={`lesson-locked-${l.id}`} className="h-8 px-3 rounded-full bg-[#F2F2EC] flex items-center gap-1 text-[10px] text-[#6B7269] uppercase tracking-widest shrink-0">
-                        <Lock className="h-3 w-3" /> Locked
+                      <div data-testid={`lesson-locked-${l.id}`} aria-label="Locked" title="Locked" className="h-8 w-8 sm:w-auto sm:px-3 justify-center rounded-full bg-[#F2F2EC] flex items-center gap-1 text-[10px] text-[#6B7269] uppercase tracking-widest shrink-0">
+                        <Lock className="h-3.5 w-3.5 sm:h-3 sm:w-3" /> <span className="hidden sm:inline">Locked</span>
                       </div>
                     )}
                   </div>

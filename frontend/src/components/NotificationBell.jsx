@@ -84,15 +84,15 @@ export default function NotificationBell() {
             exit={{ opacity: 0, y: -8, scale: 0.98 }}
             transition={{ duration: 0.16 }}
             data-testid="notification-panel"
-            className="absolute right-0 mt-2 w-80 overflow-hidden rounded-2xl border border-[#E5E6DF] bg-white shadow-xl"
+            className="absolute right-0 z-[60] mt-2 w-[min(20rem,calc(100vw-1.5rem))] overflow-hidden rounded-2xl border border-[#E5E6DF] bg-white shadow-xl"
           >
             <div className="flex items-center justify-between border-b border-[#EFF0EA] px-4 py-3">
               <span className="text-[13px] font-semibold text-[#1C221F]">Notifications</span>
-              <button onClick={() => setOpen(false)} className="text-[#6B7269] hover:text-[#1C221F]">
+              <button onClick={() => setOpen(false)} aria-label="Close notifications" className="-mr-2 flex h-9 w-9 items-center justify-center rounded-full text-[#6B7269] hover:bg-[#F2F2EC] hover:text-[#1C221F]">
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <div className="max-h-[60vh] overflow-y-auto">
+            <div className="max-h-[60vh] overflow-y-auto overscroll-contain">
               {items.length === 0 ? (
                 <div className="px-4 py-10 text-center text-[13px] text-[#6B7269]">
                   You're all caught up 🌿

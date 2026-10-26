@@ -11,7 +11,10 @@ TESTIMONIALS = [
     {"id": "student-sofia", "author": "Sofia Larsen", "role": "Yoga Instructor, Barcelona", "quote": "A week in Málaga with Tony reset everything. I came home a different teacher — and a different person.", "photo": "https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?w=200&h=200&fit=crop&crop=faces", "video_url": ""},
 ]
 FEATURED = {"enabled": True, "video_url": "", "poster_url": "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=1200&h=900&fit=crop", "name": "María Castillo", "role": "Student, Madrid", "headline": '"Tony gave me a practice I actually keep."'}
-IMAGE_SLOTS = {"hero", "story", "app_cta", "teacher_training"}
+IMAGE_SLOTS = {
+    "hero", "story", "app_cta", "teacher_training", "private_session", "tony_portrait", "app_home",
+    "tt_page_hero", "tt_page_group", "library_1", "library_2", "library_3", "library_4", "hero_video",
+}
 CONTENT_KEYS = {"testimonials", "hero_testimonial", "site_images"}
 
 
@@ -77,7 +80,8 @@ def validate_content(update):
         else:
             if not isinstance(value, dict) or len(value) > 50:
                 raise HTTPException(422, "Invalid image settings.")
-            value = {k: safe_url(v) for k, v in value.items()}
+            # "off" switches the homepage hero video off; every other value is a link.
+            value = {k: ("off" if k == "hero_video" and v == "off" else safe_url(v)) for k, v in value.items()}
         update[key] = value
 
 

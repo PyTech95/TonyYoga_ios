@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Bell, BellOff } from "lucide-react";
 import { getPushState, subscribePush, unsubscribePush, pushSupported } from "@/lib/push";
+import { isNativeApp } from "@/lib/platform";
 
 export default function PushToggle() {
   const [state, setState] = useState({ supported: false });
@@ -15,6 +16,9 @@ export default function PushToggle() {
   useEffect(() => { refresh(); }, []);
 
   if (isIOSApp()) return <p className="rounded-2xl bg-[#F2F2EC] p-4 text-xs text-[#6B7269]">Check the bell in TonYoga for in-app notifications. Native background push reminders are not enabled in this version.</p>;
+  // Browser (web-push) reminders can't run inside the iOS / Android app's web view,
+  // so the card would only ever say "not supported" there. Hide it in the app.
+  if (isNativeApp()) return null;
 
   if (!pushSupported()) {
     return (

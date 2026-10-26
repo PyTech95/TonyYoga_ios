@@ -286,7 +286,7 @@ export default function VideoPlayer() {
 
   return (
     <div data-testid="video-player-page" className="pb-8">
-      <PageHeader eyebrow={v.style} title={v.title} back testId="video-header" />
+      <PageHeader eyebrow={v.style} title={v.title} back testId="video-header" width="max-w-3xl" />
 
       <div className="mx-auto max-w-3xl px-5 space-y-5">
         {playable && resume > 5 && !done && !resumeDismissed && (
@@ -443,8 +443,8 @@ export default function VideoPlayer() {
       {autoAdvance && nextLesson && (
         <div
           data-testid="autoadvance-overlay"
-          className="fixed inset-x-0 bottom-20 z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-[#2A312D] bg-[#1C221F] px-4 py-3 text-[#FAFAF7] shadow-2xl"
-          style={{ width: "calc(100% - 2.5rem)" }}
+          className="fixed inset-x-0 z-50 mx-auto flex max-w-md items-center gap-3 rounded-2xl border border-[#2A312D] bg-[#1C221F] px-4 py-3 text-[#FAFAF7] shadow-2xl"
+          style={{ width: "calc(100% - 2rem)", bottom: "calc(var(--nav-h) + var(--sab) + 12px)" }}
         >
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#B25A45] text-sm font-bold">
             {countdown}

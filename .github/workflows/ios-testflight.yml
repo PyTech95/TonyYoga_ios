@@ -23,6 +23,7 @@ jobs:
 
     env:
       APP_BUNDLE_ID: com.tonyoga.app
+      APP_VERSION: "1.1.0"
       TEAM_ID: B38XS68W4W
       SCHEME: App
       PROJECT_PATH: ios/App/App.xcodeproj
@@ -162,7 +163,8 @@ jobs:
           echo "Production backend:"
           echo "$REACT_APP_BACKEND_URL"
 
-          npm run build
+          # App screens only: the website's pre-rendered SEO pages are not needed inside the app.
+          npx craco build
 
       # =========================================================
       # 6. VERIFY PRODUCTION API IN COMPILED BUILD
@@ -410,14 +412,14 @@ jobs:
           set -e
 
           /usr/libexec/PlistBuddy \
-            -c "Set :CFBundleShortVersionString 1.0" \
+            -c "Set :CFBundleShortVersionString ${APP_VERSION}" \
             ios/App/App/Info.plist
 
           /usr/libexec/PlistBuddy \
             -c "Set :CFBundleVersion ${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}" \
             ios/App/App/Info.plist
 
-          echo "Version: 1.0"
+          echo "Version: ${APP_VERSION}"
           echo "Build: ${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
 
       # =========================================================

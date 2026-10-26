@@ -47,7 +47,7 @@ export default function Meditations() {
 
   return (
     <div data-testid="meditations-page" className="pb-10">
-      <PageHeader eyebrow={t("med.eyebrow")} title={t("med.title")} testId="meditations-header" />
+      <PageHeader eyebrow={t("med.eyebrow")} title={t("med.title")} testId="meditations-header" width="max-w-5xl" />
 
       <div className="mx-auto max-w-5xl px-5">
         <p className="text-[15px] text-[#545E56] leading-relaxed mb-5 max-w-2xl">
@@ -139,7 +139,7 @@ function MeditationPlayer({ m, onClose }) {
   const embed = yid ? `https://www.youtube.com/embed/${yid}?rel=0&modestbranding=1&autoplay=1` : null;
   return (
     <div data-testid="meditation-player" className="fixed inset-0 z-[80] bg-[#1C221F]/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={onClose}>
-      <div className="bg-[#FAFAF7] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-[#FAFAF7] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
         <div className="relative">
           {embed ? (
             <div className="aspect-video bg-black sm:rounded-t-3xl overflow-hidden">
@@ -150,9 +150,9 @@ function MeditationPlayer({ m, onClose }) {
               <img src={m.cover_image} alt={m.title} className="h-full w-full object-cover" />
             </div>
           ) : null}
-          <button data-testid="meditation-player-close" onClick={onClose} className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white/95 flex items-center justify-center shadow"><X className="h-4 w-4 text-[#1C221F]" /></button>
+          <button data-testid="meditation-player-close" onClick={onClose} aria-label="Close" className="absolute top-3 right-3 h-10 w-10 rounded-full bg-white/95 flex items-center justify-center shadow"><X className="h-4 w-4 text-[#1C221F]" /></button>
         </div>
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4" style={{ paddingBottom: "calc(1.5rem + var(--sab))" }}>
           <div>
             <div className="eyebrow mb-1 capitalize">{m.kind === "nidra" ? "Yoga Nidra" : m.kind}{m.duration_minutes ? ` · ${m.duration_minutes} ${t("med.min")}` : ""}</div>
             <h2 className="serif text-3xl leading-tight">{m.title}</h2>

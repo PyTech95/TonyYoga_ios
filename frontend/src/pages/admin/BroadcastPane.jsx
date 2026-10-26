@@ -5,6 +5,7 @@ import { api, API_BASE } from "@/lib/api";
 import Spinner from "@/components/Spinner";
 import { NotificationStatus } from './NotificationStatus';
 import { Field, inputCls } from "./shared";
+import { ContentImageInput } from "@/components/ContentImageInput";
 
 function EpisodesManager() {
   const [eps, setEps] = useState(null);
@@ -65,7 +66,7 @@ function EpisodesManager() {
         </Field>
         <Field label="Description"><textarea data-testid="episode-desc" rows={2} className={inputCls} value={form.description} onChange={(e) => set("description", e.target.value)} /></Field>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field label="Cover image URL (optional)"><input data-testid="episode-cover" className={inputCls} value={form.cover_image} onChange={(e) => set("cover_image", e.target.value)} placeholder="https://…" /></Field>
+          <ContentImageInput absolute label="Cover image (optional)" tid="episode-cover" value={form.cover_image} onChange={(v) => set("cover_image", v)} />
           <Field label="Tags (comma-separated)"><input data-testid="episode-tags" className={inputCls} value={form.tags} onChange={(e) => set("tags", e.target.value)} placeholder="philosophy, beginner" /></Field>
         </div>
         <Field label="Series / season (optional)" hint="Group episodes into a themed run, e.g. 'Foundations of Breath'.">

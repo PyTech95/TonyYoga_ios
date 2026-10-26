@@ -14,7 +14,9 @@ PASS_CATALOG: Dict[str, dict] = {
 
 @api.get("/passes/catalog")
 async def passes_catalog():
-    return list(PASS_CATALOG.values())
+    # Prices, credits and names are editable in Admin → Packages & prices.
+    from routers.cms import get_pass_catalog
+    return [p for p in (await get_pass_catalog()).values() if p.get("active", True)]
 
 
 @api.get("/passes/mine")

@@ -1,5 +1,5 @@
 /* Tony Yoga service worker — network-first for app code + API, cache-first for media, web push handler */
-const CACHE_VERSION = "tony-yoga-v3";
+const CACHE_VERSION = "tony-yoga-v4";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";
@@ -34,6 +34,8 @@ self.addEventListener("fetch", (event) => {
   const url = new URL(request.url);
 
   if (url.pathname.startsWith("/api/")) return;
+  // Video/audio use range requests (Safari needs 206 replies) — let the browser stream them.
+  if (request.headers.has("range") || request.destination === "video" || request.destination === "audio") return;
 
   // App code & markup (HTML/JS/CSS) — always network-first so new builds reach
   // users immediately. Cache-first here would pin a stale JS bundle forever.

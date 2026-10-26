@@ -11,6 +11,8 @@ import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import HeartButton from "@/components/HeartButton";
 import PaymentButtons from "@/components/PaymentButtons";
+import { useSeo, SITE_URL } from "@/lib/seo";
+import { retreatJsonLd } from "@/seo/seoData.mjs";
 
 function RetreatGallery({ images }) {
   const [i, setI] = useState(0);
@@ -122,6 +124,13 @@ export default function WorkshopDetail() {
       return false;
     }
   };
+
+  useSeo(w ? {
+    title: `${w.title} — Yoga Retreat in Málaga, Spain | Tony Yoga`,
+    description: ([w.subtitle, w.description].filter(Boolean).join(" ") || w.title).slice(0, 158),
+    image: w.cover_image,
+    jsonLd: retreatJsonLd(w, SITE_URL),
+  } : w === false ? { title: "Retreat not found | Tony Yoga", noindex: true } : null);
 
   if (w === null) return <><PageHeader back /><Spinner /></>;
   if (w === false) return <><PageHeader back title="Not found" /></>;

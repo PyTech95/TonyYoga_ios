@@ -1,18 +1,19 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import Logo from "@/components/Logo";
-
-const HERO = "https://images.squarespace-cdn.com/content/v1/620bca2d082bbf5542408178/6b55c6a0-8c26-4670-8cb7-68a45f7371fb/TonySanchez-head-to-knee.png";
+import { TONY } from "@/lib/brandMedia";
+import { useSiteImages, siteImage } from "@/lib/siteData";
 
 export default function Landing() {
+  const heroSrc = siteImage(useSiteImages(), "app_home", TONY.portrait);
   return (
     <div className="min-h-screen bg-[#FAFAF7]" data-testid="landing-page">
       <div className="relative overflow-hidden">
         <div className="relative h-[70vh] min-h-[520px]">
           <img
-            src={HERO}
+            src={heroSrc}
             alt="Tony Sanchez"
-            className="absolute inset-0 h-full w-full object-cover"
+            className="absolute inset-0 h-full w-full object-cover object-[center_22%]"
           />
           <div className="absolute inset-0 bg-gradient-to-b from-[#1C221F]/10 via-[#1C221F]/30 to-[#1C221F]/80" />
           <div className="grain absolute inset-0" />

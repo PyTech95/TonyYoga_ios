@@ -20,7 +20,7 @@ from typing import Any, Dict, Optional
 from fastapi import Depends, HTTPException, Request
 import httpx
 
-from core import api, db, logger, now_utc, gen_id, get_current_user, require_role
+from core import api, db, logger, now_utc, gen_id, get_current_user, require_role, checkout_return_base
 from models import CheckoutRequest
 from routers.settings import get_setting
 from routers.payments import _resolve_price, _fulfill_payment
@@ -162,6 +162,8 @@ async def paypal_create_order(payload: CheckoutRequest, user: dict = Depends(get
         return {"credit_only": True, "credit_applied": credit_applied}
 
     value = f"{float(charge_amount):.2f}"
+    return_base, return_query = checkout_return_base(payload.origin_url, payload.client)
+    mobile_return_q = "&mobile_return=ios" if (payload.metadata or {}).get("mobile_return") == "ios" else ""
 
     try:
         token = await _paypal_access_token()
@@ -179,8 +181,8 @@ async def paypal_create_order(payload: CheckoutRequest, user: dict = Depends(get
         "application_context": {
             "brand_name": "Tony Yoga",
             "user_action": "PAY_NOW",
-            "return_url": f"{payload.origin_url}/checkout/success?paypal=1" + ("&mobile_return=ios" if (payload.metadata or {}).get("mobile_return") == "ios" else ""),
-            "cancel_url": f"{payload.origin_url}/checkout/cancel?paypal=1" + ("&mobile_return=ios" if (payload.metadata or {}).get("mobile_return") == "ios" else ""),
+            "return_url": f"{return_base}/checkout/success?paypal=1{return_query}{mobile_return_q}",
+            "cancel_url": f"{return_base}/checkout/cancel?paypal=1{return_query}{mobile_return_q}",
         },
     }
     async with httpx.AsyncClient(timeout=15) as c:

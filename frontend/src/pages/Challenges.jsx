@@ -35,7 +35,7 @@ export default function Challenges() {
   const day = data?.challenge?.days[selected - 1];
   const done = progress?.completed_days.includes(selected);
   return <div data-testid="challenges-page" className="pb-12">
-    <PageHeader eyebrow="A daily return" title="Practice challenge" back testId="challenges-header" />
+    <PageHeader eyebrow="A daily return" title="Practice challenge" back testId="challenges-header" width="max-w-4xl" />
     <main className="mx-auto max-w-4xl px-5 space-y-8 min-w-0">
       {error ? <p role="alert" data-testid="challenge-error">{error} <button onClick={load} data-testid="challenge-retry" className="underline">Retry</button></p> : !data ? <Spinner /> : !data.enabled ?
         <section className="py-10 space-y-4"><h2 data-testid="challenge-paused" className="text-lg font-semibold">The challenge is taking a pause.</h2><p className="text-sm text-[#6B7269]" data-testid="challenge-paused-progress">{progress ? `Your ${progress.completed_count} completed days are saved.` : "Check back for the next practice challenge."}</p><Link to="/schedule" data-testid="challenge-browse-classes" className="pill pill-primary">Explore classes <ArrowRight className="h-4 w-4" /></Link></section> : <>

@@ -472,7 +472,11 @@ async def _write_audit(admin: dict, keys: list):
 async def public_settings():
     """Read-only public-safe settings (no secrets, no auth required)."""
     settings = await get_all_settings()
-    return {k: await get_setting(k) for k in PUBLIC_FIELDS if k in settings}
+    out = {k: await get_setting(k) for k in PUBLIC_FIELDS if k in settings}
+    # Public website address, so the mobile app can build shareable links
+    # (certificates) instead of its internal https://localhost address.
+    out["site_url"] = os.environ.get("FRONTEND_URL", "").strip().rstrip("/")
+    return out
 
 
 @api.get("/admin/integrations/status")

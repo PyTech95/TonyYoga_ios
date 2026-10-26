@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Trophy, Flame, GraduationCap, CalendarCheck, Award, ChevronLeft } from "lucide-react";
+import { Trophy, Flame, GraduationCap, CalendarCheck, Award } from "lucide-react";
+import PageHeader from "@/components/PageHeader";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 
@@ -26,10 +27,9 @@ export default function Leaderboard() {
   }, []);
 
   return (
-    <div className="mx-auto min-h-screen max-w-2xl px-5 pb-28 pt-6" data-testid="leaderboard-page">
-      <Link to="/streak" className="mb-4 inline-flex items-center gap-1 text-[13px] text-[#6B7269] hover:text-[#1C221F]">
-        <ChevronLeft className="h-4 w-4" /> Back
-      </Link>
+    <div data-testid="leaderboard-page">
+    <PageHeader back testId="leaderboard-header" />
+    <div className="mx-auto max-w-2xl px-5 pb-10">
 
       <div className="mb-6 flex items-center gap-3">
         <span className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#B25A45]/10 text-[#B25A45]">
@@ -124,6 +124,7 @@ export default function Leaderboard() {
           )}
         </>
       )}
+    </div>
     </div>
   );
 }

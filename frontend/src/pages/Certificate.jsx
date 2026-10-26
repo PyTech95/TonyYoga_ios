@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { api } from "@/lib/api";
 import Spinner from "@/components/Spinner";
 import Logo from "@/components/Logo";
+import { copyText, publicOrigin } from "@/lib/platform";
 
 export default function Certificate() {
   const { code } = useParams();
@@ -16,13 +17,18 @@ export default function Certificate() {
   }, [code]);
 
   const share = async () => {
-    const url = window.location.href;
-    try {
-      if (navigator.share) { await navigator.share({ title: "Tony Yoga — Certificate", url }); return; }
-      await navigator.clipboard.writeText(url);
+    // Inside the app, location.href is the app's internal address — share the public page.
+    const url = `${publicOrigin()}${window.location.pathname}`;
+    if (navigator.share) {
+      try { await navigator.share({ title: "Tony Yoga — Certificate", url }); return; }
+      catch (err) { if (err?.name === "AbortError") return; }
+    }
+    if (await copyText(url)) {
       setCopied(true); toast.success("Share link copied");
       setTimeout(() => setCopied(false), 2000);
-    } catch { /* noop */ }
+    } else {
+      toast.error("Could not copy the link");
+    }
   };
 
   if (cert === null) return <Spinner />;
@@ -36,7 +42,7 @@ export default function Certificate() {
   const issued = new Date(cert.issued_at).toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" });
 
   return (
-    <div data-testid="certificate-page" className="min-h-screen bg-[#0F1211] py-10 px-5">
+    <div data-testid="certificate-page" className="min-h-screen bg-[#0F1211] px-5" style={{ paddingTop: "calc(var(--sat) + 2.5rem)", paddingBottom: "calc(var(--sab) + 2.5rem)" }}>
       <div className="mx-auto max-w-2xl">
         <div className="relative rounded-[28px] bg-[#FAFAF7] p-8 sm:p-12 border-[6px] border-[#B25A45]/25 shadow-2xl overflow-hidden">
           <div className="absolute -right-10 -top-10 h-40 w-40 rounded-full bg-[#B25A45]/8" />

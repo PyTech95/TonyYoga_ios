@@ -15,6 +15,8 @@ import HeartButton from "@/components/HeartButton";
 import BundleOffer from "@/components/BundleOffer";
 import CreditNudge from "@/components/CreditNudge";
 import PaymentButtons from "@/components/PaymentButtons";
+import { useSeo, SITE_URL } from "@/lib/seo";
+import { productJsonLd } from "@/seo/seoData.mjs";
 
 export default function ProductDetail() {
   const { id } = useParams();
@@ -37,6 +39,14 @@ export default function ProductDetail() {
     }).catch(() => setP(false));
     api.get(`/products/${id}/bundle`).then(({ data }) => setBundle(data?.bundle || null)).catch(() => setBundle(null));
   }, [id]);
+
+  useSeo(p ? {
+    title: `${p.title} | Tony Yoga Shop`,
+    description: (p.description || p.title).slice(0, 158),
+    image: p.images?.[0],
+    type: "product",
+    jsonLd: productJsonLd(p, SITE_URL),
+  } : p === false ? { title: "Product not found | Tony Yoga", noindex: true } : null);
 
   if (p === null) return <><PageHeader back /><Spinner /></>;
   if (p === false) return <><PageHeader back title="Not found" /></>;

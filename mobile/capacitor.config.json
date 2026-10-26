@@ -1,0 +1,31 @@
+{
+  "appId": "com.tonyoga.app",
+  "appName": "TonYoga",
+  "webDir": "www",
+  "backgroundColor": "#FAFAF7",
+  "server": {
+    "androidScheme": "https",
+    "iosScheme": "https"
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "backgroundColor": "#FAFAF7",
+      "showSpinner": false
+    },
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover",
+      "style": "LIGHT"
+    }
+  },
+  "ios": {
+    "contentInset": "never",
+    "backgroundColor": "#FAFAF7",
+    "scrollEnabled": true
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#FAFAF7"
+  }
+}

@@ -1,15 +1,19 @@
-import { LayoutDashboard, Youtube, Package, GraduationCap, Calendar, ClipboardCheck, Mic, MountainSnow, Gift, Settings, Upload, Flower2, Sparkles, ShoppingBag, Truck, Image, FileText, MessageSquareQuote, Smartphone, CalendarClock, CreditCard } from "lucide-react";
+import { LayoutDashboard, Youtube, Package, GraduationCap, Calendar, ClipboardCheck, Mic, MountainSnow, Gift, Settings, Upload, Flower2, Sparkles, ShoppingBag, Truck, Image, FileText, MessageSquareQuote, Smartphone, CalendarClock, CreditCard, Search, FilePlus2, Newspaper, Users, Tags } from "lucide-react";
 
 export const ADMIN_GROUPS = [
   { label: "Workspace", items: [{ key: "stats", label: "Overview", icon: LayoutDashboard }] },
   { label: "Website & app", items: [
     { key: "content", label: "Pages & live editor", icon: FileText },
+    { key: "pages", label: "Custom pages (About, Services…)", icon: FilePlus2 },
+    { key: "seo", label: "SEO & Google", icon: Search },
     { key: "images", label: "Site images", icon: Image },
+    { key: "journal", label: "Journal & news", icon: Newspaper },
     { key: "testimonials", label: "Testimonials", icon: MessageSquareQuote },
     { key: "downloads", label: "App & pop-up offers", icon: Smartphone },
   ] },
   { label: "Teaching & content", items: [
     { key: "courses", label: "Courses & videos", icon: Youtube },
+    { key: "team", label: "Instructors (photo & bio)", icon: Users },
     { key: "classes", label: "Classes & schedule", icon: Calendar },
     { key: "pricing", label: "Class pricing", icon: CreditCard },
     { key: "private", label: "Private sessions", icon: CalendarClock },
@@ -26,6 +30,7 @@ export const ADMIN_GROUPS = [
     { key: "broadcast", label: "Broadcasts", icon: Mic },
   ] },
   { label: "Commerce", items: [
+    { key: "packages", label: "Packages & prices", icon: Tags },
     { key: "shop", label: "Shop & products", icon: ShoppingBag },
     { key: "orders", label: "Orders & fulfillment", icon: Truck },
     { key: "printmedia", label: "Printful & print media", icon: Truck },

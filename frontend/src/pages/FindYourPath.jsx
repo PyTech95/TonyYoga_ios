@@ -4,6 +4,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowRight, ArrowLeft, Sparkles, Compass, Check, RotateCcw, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
+import { publicOrigin } from "@/lib/platform";
+import { HeaderTools, useShellHeader } from "@/components/HeaderTools";
 import { t } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
 
@@ -84,7 +86,7 @@ export default function FindYourPath() {
       const { data } = await api.post("/quiz/lead", {
         email: email.trim(),
         answers,
-        origin_url: window.location.origin,
+        origin_url: publicOrigin(),
       });
       setEmailSent(true);
       toast.success(data.emailed ? "Sent — check your inbox for your plan." : "Saved — we'll be in touch with your plan.");
@@ -113,17 +115,19 @@ export default function FindYourPath() {
   };
 
   const restart = () => { setStep(0); setAnswers({}); setResult(null); };
+  const showTools = useShellHeader();
 
   return (
     <div data-testid="find-your-path-page" className="min-h-[80vh] bg-[#FAFAF7]">
       {/* progress */}
-      <div className="sticky top-0 z-10 bg-[#FAFAF7]/90 backdrop-blur border-b border-[#EDEDE4]">
-        <div className="mx-auto max-w-2xl px-5 py-4 flex items-center gap-3">
-          <Compass className="h-5 w-5 text-[#B25A45]" />
-          <div className="eyebrow">Find your path</div>
-          <div className="ml-auto text-xs text-[#9AA096] font-semibold" data-testid="quiz-progress">
+      <div className="sticky top-0 z-20 bg-[#FAFAF7]/90 backdrop-blur border-b border-[#EDEDE4]" style={{ paddingTop: "var(--page-top)" }}>
+        <div className="mx-auto max-w-2xl px-5 py-3 flex items-center gap-3 min-h-[60px]">
+          <Compass className="h-5 w-5 shrink-0 text-[#B25A45]" />
+          <div className="eyebrow truncate">Find your path</div>
+          <div className="ml-auto shrink-0 text-xs text-[#9AA096] font-semibold" data-testid="quiz-progress">
             {result ? "Done" : `${step + 1} / ${STEPS.length}`}
           </div>
+          {showTools && <HeaderTools />}
         </div>
         <div className="h-1 bg-[#EDEDE4]">
           <div className="h-full bg-[#B25A45] transition-all duration-500" style={{ width: `${progress}%` }} />

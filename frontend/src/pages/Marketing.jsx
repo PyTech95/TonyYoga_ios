@@ -13,11 +13,11 @@ import { FeatureStrip, StatsBar, ValueProps, FAQ } from "@/components/MarketingS
 import HeroTestimonial from "@/components/HeroTestimonial";
 import { StudentTestimonials } from "@/components/StudentTestimonials";
 import { contentImageUrl } from "@/components/ContentImageInput";
-
-const HERO = "https://images.unsplash.com/photo-1767611127093-8ed12ce7789d?crop=entropy&cs=srgb&fm=jpg&q=85&w=1000";
-const TT_IMG = "https://images.unsplash.com/photo-1683056255281-e52a141924f0?crop=entropy&cs=srgb&fm=jpg&q=85&w=1200";
-const PRIVATE_ZOOM_IMG = "/brand/seed/private-zoom.jpeg";
-const TONY_IMG = "/brand/seed/tony.jpeg";
+import SiteFooter from "@/components/SiteFooter";
+import { usePageSeo } from "@/lib/seo";
+import { SITE_FAQ, faqJsonLd } from "@/seo/seoData.mjs";
+import { TONY, preferStill } from "@/lib/brandMedia";
+import { siteImage, useCmsPages } from "@/lib/siteData";
 
 function isStandalone() {
   return typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true);
@@ -40,6 +40,9 @@ function Nav({ onOpenApp }) {
     { href: "#faq", label: t("marketing.nav_faq") },
     { href: "#join", label: t("marketing.nav_join") },
   ];
+  // Pages marked "Show in website menu" in Admin → Custom pages (About, Services…).
+  const pages = useCmsPages().filter((p) => p.show_in_header).map((p) => ({ to: `/${p.slug}`, label: p.menu_label || p.title }));
+  const bp = pages.length ? "xl" : "lg"; // more links need a wider screen before the burger menu goes away
   return (
     <header
       data-testid="marketing-nav"
@@ -49,12 +52,15 @@ function Nav({ onOpenApp }) {
         <a href="#top" className="flex items-center" data-testid="marketing-logo">
           <Logo className="h-[60px] w-[60px] sm:h-[79px] sm:w-[79px]" />
         </a>
-        <nav className="hidden lg:flex items-center gap-8" data-testid="marketing-nav-links">
+        <nav className={`hidden ${bp === "xl" ? "xl:flex gap-6" : "lg:flex gap-8"} items-center`} data-testid="marketing-nav-links">
           {items.map((i) => (
             <a key={i.href} href={i.href} data-testid={`marketing-nav-${i.href.slice(1)}`} className="text-sm text-[#545E56] hover:text-[#B25A45] transition">{i.label}</a>
           ))}
+          {pages.map((p) => (
+            <Link key={p.to} to={p.to} data-testid={`marketing-nav-page${p.to.replace("/", "-")}`} className="text-sm text-[#545E56] hover:text-[#B25A45] transition">{p.label}</Link>
+          ))}
         </nav>
-        <div className="hidden lg:flex items-center gap-3">
+        <div className={`hidden ${bp === "xl" ? "xl:flex" : "lg:flex"} items-center gap-3`}>
           <Link to="/teacher-training" data-testid="nav-teacher-training" className="text-sm text-[#545E56] hover:text-[#B25A45] transition">Teacher Training</Link>
           <LanguageToggle />
           <Link to="/login" data-testid="nav-signin" className="text-sm text-[#545E56] hover:text-[#B25A45] transition">{t("common.signIn")}</Link>
@@ -62,15 +68,18 @@ function Nav({ onOpenApp }) {
             {t("marketing.open_app")} <ArrowRight className="h-3.5 w-3.5" />
           </button>
         </div>
-        <button onClick={() => setOpen((o) => !o)} data-testid="nav-menu-toggle" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} className="lg:hidden h-11 w-11 rounded-full border border-[#E5E6DF] flex items-center justify-center">
+        <button onClick={() => setOpen((o) => !o)} data-testid="nav-menu-toggle" aria-label={open ? 'Close menu' : 'Open menu'} aria-expanded={open} className={`${bp === "xl" ? "xl:hidden" : "lg:hidden"} h-11 w-11 rounded-full border border-[#E5E6DF] flex items-center justify-center`}>
           {open ? <X className="h-4 w-4" /> : <Menu className="h-4 w-4" />}
         </button>
       </div>
       {open && (
-        <div className="lg:hidden bg-[#FAFAF7] border-b border-[#E5E6DF] px-4 sm:px-6 py-4" data-testid="mobile-menu">
+        <div className={`${bp === "xl" ? "xl:hidden" : "lg:hidden"} bg-[#FAFAF7] border-b border-[#E5E6DF] px-4 sm:px-6 py-4`} data-testid="mobile-menu">
           <ul className="space-y-3">
             {items.map((i) => (
               <li key={i.href}><a href={i.href} data-testid={`mobile-marketing-nav-${i.href.slice(1)}`} onClick={() => setOpen(false)} className="block py-2 text-[#1C221F] font-medium">{i.label}</a></li>
+            ))}
+            {pages.map((p) => (
+              <li key={p.to}><Link to={p.to} onClick={() => setOpen(false)} data-testid={`mobile-marketing-nav-page${p.to.replace("/", "-")}`} className="block py-2 text-[#1C221F] font-medium">{p.label}</Link></li>
             ))}
             <li className="pt-2 border-t border-[#E5E6DF]">
               <Link to="/teacher-training" onClick={() => setOpen(false)} data-testid="mobile-nav-teacher-training" className="block py-2 text-[#1C221F] font-medium">Teacher Training</Link>
@@ -85,10 +94,35 @@ function Nav({ onOpenApp }) {
   );
 }
 
-function Hero({ onOpenApp, heroImg }) {
+// Home hero: Tony's practice video (built-in, or one set in Admin → Site images),
+// otherwise a photo. "off" in the video slot always shows the photo.
+function HeroMedia({ heroImg, heroVideo }) {
+  const [still] = useState(preferStill);
+  const custom = contentImageUrl(heroImg);
+  const video = heroVideo === "off" ? "" : contentImageUrl(heroVideo) || (custom ? "" : TONY.heroVideo);
+  const poster = custom || TONY.heroPoster;
+  const showVideo = !!video && !still;
+  return (
+    <div className={`relative ${video ? "aspect-square" : "aspect-[3/4]"} rounded-2xl sm:rounded-3xl overflow-hidden bg-[#E9E7E1]`}>
+      {showVideo ? (
+        <video
+          data-cms="site_images:hero_video" data-testid="hero-video"
+          src={video} poster={poster} autoPlay muted loop playsInline preload="auto"
+          aria-label="Tony Sanchez practising yoga"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <img data-cms="site_images:hero" data-testid="hero-image" src={poster} alt="Tony Sanchez practising yoga" className="absolute inset-0 h-full w-full object-cover" />
+      )}
+      <div className="absolute inset-0 grain"></div>
+    </div>
+  );
+}
+
+function Hero({ onOpenApp, heroImg, heroVideo }) {
   const { t } = useTranslation();
   return (
-    <section id="top" className="relative overflow-hidden pt-24 sm:pt-28 lg:pt-32">
+    <section id="top" className="relative overflow-hidden pt-[7.5rem] sm:pt-[9.75rem] lg:pt-32">
       <div className="mx-auto max-w-6xl px-4 sm:px-6 grid lg:grid-cols-2 gap-8 lg:gap-16 items-center lg:min-h-[80vh]">
         <div className="animate-fade-up order-2 lg:order-1">
           <div className="eyebrow mb-3 sm:mb-4">{t("mkt.hero_eyebrow")}</div>
@@ -116,10 +150,7 @@ function Hero({ onOpenApp, heroImg }) {
           </div>
         </div>
         <div className="relative animate-fade-up animate-delay-2 order-1 lg:order-2 max-w-md mx-auto lg:max-w-none w-full">
-          <div className="relative aspect-[3/4] rounded-2xl sm:rounded-3xl overflow-hidden bg-[#F2F2EC]">
-            <img data-cms="site_images:hero" data-testid="hero-image" src={contentImageUrl(heroImg) || HERO} alt="Yoga practice" className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 grain"></div>
-          </div>
+          <HeroMedia heroImg={heroImg} heroVideo={heroVideo} />
           <div className="hidden lg:block absolute -left-6 -bottom-6 w-52 rounded-2xl bg-[#1C221F] text-[#FAFAF7] p-5 shadow-2xl">
             <div className="eyebrow !text-[#B25A45]">{t("mkt.live_now")}</div>
             <div className="text-sm mt-1 font-semibold">{t("mkt.hero_card_title")}</div>
@@ -138,11 +169,9 @@ function Story({ img }) {
       <div className="md:col-span-1">
         <div className="eyebrow mb-3">{t("mkt.story_eyebrow")}</div>
         <h2 className="serif text-3xl sm:text-4xl leading-tight">{t("mkt.story_t1")}<br/>{t("mkt.story_t2")}</h2>
-        {img && (
-          <div className="mt-6 rounded-2xl overflow-hidden aspect-[4/5] bg-[#F2F2EC]">
-            <img data-cms="site_images:story" src={contentImageUrl(img)} alt="Story" className="h-full w-full object-cover" data-testid="story-image" />
-          </div>
-        )}
+        <div className="mt-6 rounded-2xl overflow-hidden aspect-[4/5] bg-[#F2F2EC]">
+          <img data-cms="site_images:story" src={contentImageUrl(img) || TONY.story} alt="Tony Sanchez in a kneeling balance, palms together" className="h-full w-full object-cover" data-testid="story-image" loading="lazy" />
+        </div>
       </div>
       <div className="md:col-span-2 space-y-5 sm:space-y-6 text-[#545E56] leading-relaxed">
         <p className="text-base sm:text-lg">{t("mkt.story_p1")}</p>
@@ -295,83 +324,6 @@ function AppCTA({ onOpenApp, img }) {
   );
 }
 
-function Footer() {
-  const { t } = useTranslation();
-  const [email, setEmail] = useState("");
-  const [subbed, setSubbed] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [subscribeError, setSubscribeError] = useState('');
-  const subscribe = async (e) => {
-    e.preventDefault();
-    if (submitting) return;
-    setSubmitting(true); setSubscribeError('');
-    try {
-      await api.post("/submissions/newsletter", { email });
-      setSubbed(true);
-    } catch { setSubscribeError('Could not save your email. Please try again.'); }
-    finally { setSubmitting(false); }
-  };
-  return (
-    <footer className="bg-[#1C221F] text-[#FAFAF7] py-12 sm:py-16">
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 grid md:grid-cols-2 gap-8 md:gap-10">
-        <div>
-          <div className="mb-4">
-            <Logo className="h-20 w-20 sm:h-24 sm:w-24" />
-          </div>
-          <p className="text-white/60 text-sm leading-relaxed max-w-sm">{t("mkt.footer_tagline")}</p>
-          <a href="mailto:tony@tonysanchezyoga.com" className="text-sm text-[#B25A45] hover:underline mt-4 inline-block">tony@tonysanchezyoga.com</a>
-        </div>
-        <div>
-          <div className="eyebrow !text-[#B25A45] mb-3">{t("mkt.stay_in_touch")}</div>
-          <p className="text-sm text-white/60 mb-4">{t("mkt.newsletter_sub")}</p>
-          {subbed ? (
-            <div className="rounded-2xl bg-white/5 border border-white/10 p-4 text-sm text-white/80" data-testid="footer-newsletter-thanks">
-              {t("mkt.newsletter_thanks")}
-            </div>
-          ) : (
-            <form onSubmit={subscribe} className="flex flex-col sm:flex-row gap-2 min-w-0" data-testid="footer-newsletter-form">
-              <input
-                required type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                data-testid="footer-newsletter-email"
-                placeholder="you@example.com"
-                className="flex-1 min-w-0 w-full rounded-full bg-white/10 border border-white/10 px-4 py-2.5 text-sm text-white placeholder:text-white/40 focus:outline-none focus:border-[#B25A45]"
-              />
-              <button type="submit" disabled={submitting} data-testid="footer-newsletter-submit" className="pill !bg-[#B25A45] !text-white !py-2 !px-4 !text-[13px]">{submitting ? 'Saving…' : t("mkt.subscribe")}</button>
-            </form>
-          )}
-          {subscribeError && <p role="alert" className="mt-2 text-sm text-[#efb9a8]" data-testid="footer-newsletter-error">{subscribeError}</p>}
-        </div>
-      </div>
-      <div className="mx-auto max-w-6xl px-4 sm:px-6 mt-8 sm:mt-12 pt-6 border-t border-white/10 flex flex-wrap items-center justify-between gap-4">
-        <div className="dev-credit" data-testid="footer-dev-credit">
-          <span>© {new Date().getFullYear()} Tony Yoga. {t("mkt.rights")}</span>
-          <span className="text-white/25">·</span>
-          <span>Developed by</span>
-          <a
-            href="https://rajeevfreelancer.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="dev-credit-link"
-            data-testid="footer-dev-credit-link"
-          >
-            <Sparkles size={13} className="dev-sparkle" strokeWidth={2.5} />
-            Rajeev
-            <Sparkles size={11} className="dev-sparkle two" strokeWidth={2.5} />
-          </a>
-        </div>
-        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-xs">
-          <Link to="/privacy" data-testid="footer-privacy" className="text-white/60 hover:text-white transition">Privacy</Link>
-          <Link to="/terms" data-testid="footer-terms" className="text-white/60 hover:text-white transition">Terms</Link>
-          <Link to="/account-deletion" data-testid="footer-account-deletion" className="text-white/60 hover:text-white transition">Delete account</Link>
-          <Link to="/support" data-testid="footer-support" className="text-white/60 hover:text-white transition">Support</Link>
-          <Link to="/home" className="text-white/60 hover:text-white transition">{t("mkt.student_signin")}</Link>
-          <Link to="/login?admin=1" data-testid="footer-admin-signin" className="text-white/60 hover:text-[#B25A45] transition">{t("mkt.admin_signin")}</Link>
-        </div>
-      </div>
-    </footer>
-  );
-}
-
 function BestSellers() {
   const [items, setItems] = useState([]);
   useEffect(() => { api.get("/products/best-sellers?limit=8").then(({ data }) => setItems(data || [])).catch(() => setItems([])); }, []);
@@ -513,7 +465,7 @@ function QuizBanner() {
   );
 }
 
-function DiscoverStrip() {
+function DiscoverStrip({ images }) {
   return (
     <section id="discover" className="mx-auto max-w-6xl px-4 sm:px-6 py-14 sm:py-20">
       <div className="rounded-3xl bg-[#1C221F] text-[#FAFAF7] p-8 sm:p-12 grid lg:grid-cols-[1.3fr,1fr] gap-8 items-center overflow-hidden relative">
@@ -541,10 +493,7 @@ function DiscoverStrip() {
           </div>
         </div>
         <div className="hidden lg:grid grid-cols-2 gap-3">
-          {["https://images.unsplash.com/photo-1506126279646-a697353d3166?w=400&q=80",
-            "https://images.unsplash.com/photo-1544367567-0f2fcb009e0b?w=400&q=80",
-            "https://images.unsplash.com/photo-1518611012118-696072aa579a?w=400&q=80",
-            "https://images.unsplash.com/photo-1545205597-3d9d02c29597?w=400&q=80"].map((src, i) => (
+          {TONY.library.map((def, i) => siteImage(images, `library_${i + 1}`, def)).map((src, i) => (
             <div key={i} className={`rounded-2xl overflow-hidden aspect-square ${i % 2 ? "translate-y-4" : ""}`}>
               <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
             </div>
@@ -559,7 +508,7 @@ const COMING_SOON = [
   { icon: Flame, title: "Challenges", desc: "30-day practice streaks" },
 ];
 
-function PrivateSessionsBanner({ img, price, durationMin }) {
+function PrivateSessionsBanner({ img, tonyImg, price, durationMin }) {
   const priceLabel = price ? `€${Math.round(price)}` : "€120";
   const dur = durationMin || 60;
   const perks = [
@@ -643,15 +592,15 @@ function PrivateSessionsBanner({ img, price, durationMin }) {
                 <img
                   data-cms="site_images:private_session"
                   data-testid="home-private-image"
-                  src={contentImageUrl(img) || PRIVATE_ZOOM_IMG}
-                  alt="Private 1-on-1 Zoom yoga session with Tony"
+                  src={contentImageUrl(img) || TONY.privateSession}
+                  alt="Tony Sanchez teaching a student one-to-one"
                   className="absolute inset-0 h-full w-full object-cover"
                   loading="lazy"
                 />
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                 {/* participant tile: Tony */}
                 <div className="absolute bottom-3 right-3 h-20 w-16 sm:h-24 sm:w-20 rounded-lg overflow-hidden border-2 border-[#E8B04B] shadow-lg">
-                  <img src={TONY_IMG} alt="Tony" className="h-full w-full object-cover" loading="lazy" />
+                  <img data-cms="site_images:tony_portrait" src={contentImageUrl(tonyImg) || TONY.face} alt="Tony Sanchez" className="h-full w-full object-cover object-top" loading="lazy" />
                   <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-center text-white py-0.5">Tony</span>
                 </div>
               </div>
@@ -696,7 +645,7 @@ function TeacherTrainingBanner({ img }) {
     <section className="mx-auto max-w-6xl px-4 sm:px-6 py-14 sm:py-20" data-testid="home-teacher-training">
       <div className="rounded-2xl sm:rounded-3xl overflow-hidden bg-[#1C221F] text-[#FAFAF7] grid md:grid-cols-2">
         <div className="relative min-h-[240px] md:min-h-full">
-          <img data-cms="site_images:teacher_training" data-testid="teacher-training-image" src={contentImageUrl(img) || TT_IMG} alt="Teacher training" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+          <img data-cms="site_images:teacher_training" data-testid="teacher-training-image" src={contentImageUrl(img) || TONY.group} alt="Tony Sanchez with students after class" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-[#1C221F] via-[#1C221F]/30 to-transparent" />
         </div>
         <div className="p-6 sm:p-10 lg:p-14">
@@ -725,7 +674,10 @@ function TeacherTrainingBanner({ img }) {
   );
 }
 
+const HOME_LD = { "@context": "https://schema.org", "@graph": [faqJsonLd(SITE_FAQ)] };
+
 export default function Marketing() {
+  usePageSeo("/", { jsonLd: HOME_LD });
   const [siteImages, setSiteImages] = useState({});
   const [pub, setPub] = useState({});
   const openApp = () => {
@@ -733,7 +685,6 @@ export default function Marketing() {
     else window.dispatchEvent(new Event('tony-open-downloads'));
   };
   useEffect(() => {
-    document.title = "Tony Yoga — Slow down. Breathe in. Begin again.";
     api.get("/settings/public").then(({ data }) => {
       setSiteImages(data?.site_images || {});
       setPub(data || {});
@@ -743,13 +694,13 @@ export default function Marketing() {
     <div data-testid="marketing-site" className="min-h-screen bg-[#FAFAF7]">
       <FreeClassRibbon />
       <Nav onOpenApp={openApp} />
-      <Hero onOpenApp={openApp} heroImg={siteImages.hero} />
+      <Hero onOpenApp={openApp} heroImg={siteImages.hero} heroVideo={siteImages.hero_video} />
       <FeatureStrip />
       <StatsBar />
       <Story img={siteImages.story} />
       <ValueProps />
       <Programs />
-      <PrivateSessionsBanner img={pub.private_session_image || siteImages.private_session} price={pub.private_session_price} durationMin={pub.private_session_duration_min} />
+      <PrivateSessionsBanner img={pub.private_session_image || siteImages.private_session} tonyImg={siteImages.tony_portrait} price={pub.private_session_price} durationMin={pub.private_session_duration_min} />
       <TeacherTrainingBanner img={siteImages.teacher_training} />
       <QuizBanner />
       <BestSellers />
@@ -762,7 +713,7 @@ export default function Marketing() {
       <FAQ />
       <AppCTA onOpenApp={openApp} img={siteImages.app_cta} />
       <InstagramReels />
-      <Footer />
+      <SiteFooter />
     </div>
   );
 }

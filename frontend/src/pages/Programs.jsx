@@ -9,6 +9,8 @@ import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import PaymentButtons from "@/components/PaymentButtons";
 import { AccessTermSummary } from "@/components/AccessTerm";
+import { usePageSeo, SITE_URL } from "@/lib/seo";
+import { courseJsonLd } from "@/seo/seoData.mjs";
 
 export default function Programs() {
   const [rows, setRows] = useState(null);
@@ -19,6 +21,15 @@ export default function Programs() {
     api.get("/programs").then(({ data }) => setRows(Array.isArray(data) ? data : (data?.programs || data?.data || data?.items || []))).catch(() => setRows([]));
     api.get("/bundles").then(({ data }) => setBundles(data || [])).catch(() => setBundles([]));
   }, []);
+
+  usePageSeo("/programs", {
+    ready: !!(rows && rows.length),
+    jsonLd: rows && rows.length ? {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      itemListElement: rows.map((p, i) => { const c = courseJsonLd(p, SITE_URL); delete c["@context"]; return { "@type": "ListItem", position: i + 1, item: c }; }),
+    } : null,
+  });
 
   return (
     <div data-testid="programs-page">

@@ -7,8 +7,8 @@ import { useTranslation } from "react-i18next";
 import Spinner from "@/components/Spinner";
 import StreakCard from "@/components/StreakCard";
 import Logo from "@/components/Logo";
-
-const HERO = "https://images.squarespace-cdn.com/content/v1/620bca2d082bbf5542408178/6b55c6a0-8c26-4670-8cb7-68a45f7371fb/TonySanchez-head-to-knee.png";
+import { TONY } from "@/lib/brandMedia";
+import { useSiteImages, siteImage } from "@/lib/siteData";
 
 function formatWhen(iso, locale) {
   try {
@@ -20,6 +20,7 @@ function formatWhen(iso, locale) {
 
 export default function HomePage() {
   const { user } = useAuth();
+  const heroSrc = siteImage(useSiteImages(), "app_home", TONY.portrait);
   const { t, i18n } = useTranslation();
   const locale = i18n.language === "es" ? "es-ES" : "en-US";
   const [classes, setClasses] = useState(null);
@@ -61,7 +62,7 @@ export default function HomePage() {
       {/* Hero */}
       <div className="relative overflow-hidden">
         <div className="relative h-[52vh] min-h-[380px]">
-          <img src={HERO} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={heroSrc} alt="" data-testid="home-hero-image" className="absolute inset-0 h-full w-full object-cover object-[center_22%]" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#1C221F]/0 via-[#1C221F]/25 to-[#1C221F]/85" />
           <div className="absolute top-3 sm:top-4 left-4 sm:left-5 z-10 safe-top">
             <Logo className="h-14 w-14 sm:h-16 sm:w-16" />
@@ -234,8 +235,10 @@ export default function HomePage() {
             <ul className="space-y-4">
               {news.map((n) => (
                 <li key={n.id} className="border-b border-[#E5E6DF] pb-4 last:border-0">
-                  <div className="serif text-lg leading-tight">{n.title}</div>
-                  <p className="text-sm text-[#6B7269] mt-1 clamp-2">{n.excerpt}</p>
+                  <Link to={`/news/${n.slug}`} className="block group" data-testid={`home-news-${n.slug}`}>
+                    <div className="serif text-lg leading-tight group-hover:text-[#B25A45] transition-colors">{n.title}</div>
+                    <p className="text-sm text-[#6B7269] mt-1 clamp-2">{n.excerpt}</p>
+                  </Link>
                 </li>
               ))}
             </ul>

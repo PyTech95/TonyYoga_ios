@@ -12,12 +12,20 @@
       "launchShowDuration": 1200,
       "backgroundColor": "#FAFAF7",
       "showSpinner": false
+    },
+    "SystemBars": {
+      "insetsHandling": "css",
+      "initialViewportFitValueHint": "cover",
+      "style": "LIGHT"
     }
   },
   "ios": {
-    "contentInset": "always"
+    "contentInset": "never",
+    "backgroundColor": "#FAFAF7",
+    "scrollEnabled": true
   },
   "android": {
-    "allowMixedContent": false
+    "allowMixedContent": false,
+    "backgroundColor": "#FAFAF7"
   }
 }

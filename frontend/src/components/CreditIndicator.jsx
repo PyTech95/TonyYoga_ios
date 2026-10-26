@@ -28,7 +28,7 @@ export default function CreditIndicator() {
       to="/shop"
       data-testid="nav-credit-indicator"
       title="Gift-card credit — apply it at checkout"
-      className="inline-flex items-center gap-1.5 rounded-full border border-[#E0D3B8] bg-[#FBF6EC] pl-2 pr-3 py-1.5 text-[12px] font-semibold text-[#5C5346] shadow-sm hover:bg-[#F5EDDD] transition-colors"
+      className="inline-flex h-10 items-center gap-1.5 rounded-full border border-[#E0D3B8] bg-[#FBF6EC] pl-2 pr-3 text-[12px] font-semibold text-[#5C5346] shadow-sm hover:bg-[#F5EDDD] transition-colors whitespace-nowrap"
     >
       <span className="inline-flex h-5 w-5 items-center justify-center rounded-full bg-[#B25A45]/12">
         <Gift className="h-3 w-3 text-[#B25A45]" />
