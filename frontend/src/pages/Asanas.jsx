@@ -33,7 +33,7 @@ export default function Asanas() {
 
   return (
     <div data-testid="asanas-page" className="pb-10">
-      <PageHeader eyebrow="Pose library" title="Asana Index" testId="asanas-header" />
+      <PageHeader eyebrow="Pose library" title="Asana Index" testId="asanas-header" width="max-w-5xl" />
 
       <div className="mx-auto max-w-5xl px-5">
         <p className="text-[15px] text-[#545E56] leading-relaxed mb-5 max-w-2xl">
@@ -127,7 +127,7 @@ function AsanaDetail({ asana, onClose }) {
       onClick={onClose}
     >
       <div
-        className="bg-[#FAFAF7] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto"
+        className="bg-[#FAFAF7] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto overscroll-contain"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative">
@@ -140,12 +140,12 @@ function AsanaDetail({ asana, onClose }) {
               <img src={asana.cover_image} alt={asana.name} className="h-full w-full object-cover" />
             </div>
           ) : null}
-          <button data-testid="asana-detail-close" onClick={onClose} className="absolute top-3 right-3 h-9 w-9 rounded-full bg-white/95 flex items-center justify-center hover:bg-white shadow">
+          <button data-testid="asana-detail-close" onClick={onClose} aria-label="Close" className="absolute top-3 right-3 h-10 w-10 rounded-full bg-white/95 flex items-center justify-center hover:bg-white shadow">
             <X className="h-4 w-4 text-[#1C221F]" />
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4" style={{ paddingBottom: "calc(1.5rem + var(--sab))" }}>
           <div>
             {asana.category && <div className="eyebrow mb-1">{asana.category}{asana.difficulty ? ` · ${asana.difficulty}` : ""}</div>}
             <h2 className="serif text-3xl leading-tight">{asana.name}</h2>

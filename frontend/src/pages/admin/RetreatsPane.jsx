@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { api, API_BASE } from "@/lib/api";
 import Spinner from "@/components/Spinner";
+import { ContentImageInput } from "@/components/ContentImageInput";
 
 const EMPTY = {
   title: "", system: "Core 40", description: "", location: "Villa San Pedro · Málaga, Spain",
@@ -119,7 +120,7 @@ function RetreatsPane() {
           <label className="text-xs text-[#6B7269]">Deposit €<input data-testid="retreat-deposit" type="number" className={ic} value={form.deposit_eur} onChange={(e) => set("deposit_eur", e.target.value)} /></label>
           <label className="text-xs text-[#6B7269]">Capacity<input data-testid="retreat-capacity" type="number" className={ic} value={form.capacity} onChange={(e) => set("capacity", e.target.value)} /></label>
         </div>
-        <input data-testid="retreat-cover" className={ic} value={form.cover_image} onChange={(e) => set("cover_image", e.target.value)} placeholder="Cover image URL (optional)" />
+        <ContentImageInput absolute label="Cover photo" tid="retreat-cover" value={form.cover_image} onChange={(v) => set("cover_image", v)} />
 
         <label className="block text-xs text-[#6B7269]">Student video link (YouTube / Vimeo / Loom)
           <input data-testid="retreat-student-video" className={ic} value={form.student_video_url} onChange={(e) => set("student_video_url", e.target.value)} placeholder="https://youtu.be/… — a real student sharing their retreat" />

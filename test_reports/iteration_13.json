@@ -1,0 +1,33 @@
+{
+  "summary": "Iteration 13 verifies (A) Printful endless-spinner regression fix and (B) 14-language i18n rollout. Backend: 3/3 pytest pass — /api/admin/printful/verify with no token returns {ok:false}, /api/admin/printful/connect with an invalid token returns HTTP 400 with a friendly message and rolls back so status.configured stays false. Frontend admin Printful pane: submitting an invalid token resolves in ~1s, button re-enables, error surfaces — no endless spinner (axios 45s default timeout in place). i18n: language toggle exposes all 14 codes (en, es, fr, it, pt, de, nl, pl, ru, zh, ja, hi, ar, sa); switching to French translates the marketing nav (data-testid=marketing-nav-join reads 'Rejoindre'); Arabic sets <html dir='rtl' lang='ar'> and the layout mirrors including bottom nav; switching back to English restores dir='ltr'. Persistence works: picking German writes localStorage 'ty_lang'='de' and survives a full reload (toggle still shows 'Deutsch'). Cycled through all 14 languages on the landing page with zero console errors and no blank screens. Member app (student@demo.com): bottom-nav labels translate — French shows Accueil / Programme / Boutique / Profil / Menu; Arabic switches the whole shell to RTL and stores 'ty_lang'='ar'. All 276 keys present in every locale.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Member Home (Arabic)", "issues": ["The greeting toast/pill still renders the literal string 'Welcome back' in English on the Arabic home screen (see screenshot) — likely a hard-coded string missed by the i18n sweep. Not blocking; low priority."]}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_iteration13_printful_i18n.py",
+    "/app/test_reports/pytest/iter13.xml"
+  ],
+  "action_items": [
+    "Optional: replace the hard-coded 'Welcome back' greeting on the member home with a t() key so it also translates (only observed English string in a non-English member view)."
+  ],
+  "critical_code_review_comments": [
+    "frontend/src/lib/api.js: single axios instance with 45s default timeout — clean fix; the Printful long-sync POSTs correctly override per-call with 180s.",
+    "frontend/src/i18n/index.js: keySeparator/nsSeparator both false is correct for the flat dotted keys ('marketing.nav_join', 'nav.home'); nonExplicitSupportedLngs=true correctly maps navigator locales like en-US → en. applyDir listens to languageChanged — RTL toggle verified.",
+    "LanguageToggle.jsx: proper aria-haspopup/aria-expanded and outside-click dismiss; all 14 lang-<code> testids present.",
+    "Locale coverage: all 14 locales have exactly 276 keys — good parity, no missing-key warnings in console.",
+    "Minor: consider grepping for remaining bare English strings in the member area (e.g. 'Welcome back') to fully localise the shell."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (3/3)", "frontend": "100% (core flows)"},
+  "test_credentials": "admin tony@tonyyoga.com / Welcome@123###2; student student@demo.com / Student2026!",
+  "seed_data_creation": "None. Test disconnects any prior Printful token at start to guarantee a clean not-connected baseline.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend regression at /app/backend/tests/test_iteration13_printful_i18n.py covers Printful connect rollback + verify. The endless-spinner bug can only be reproduced on the user's VPS (CORS / reverse-proxy timing) — in this same-origin preview we verified (a) axios default timeout is 45s, (b) connect/verify/disconnect resolve fast and re-enable the button. To fully validate on hosted, monitor Network tab for a connect POST that never returns and confirm it now errors at 45s.",
+  "rca_of_the_issue": "Endless spinner root cause on hosted VPS: axios instance had no timeout, so a stalled TCP/reverse-proxy request never rejected and the React state stayed in loading. Fix applied in frontend/src/lib/api.js is a single-line axios.create({ timeout: 45000 }); long Printful catalog syncs opt into 180s per call. PrintMediaPane handlers wrap the request in try/catch/finally so the spinner is cleared regardless of outcome. Preview verification: invalid-token connect resolves in ~1s and the button re-enables — no infinite spin."
+}

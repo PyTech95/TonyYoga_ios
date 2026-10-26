@@ -42,7 +42,7 @@ export default function Discover() {
 
   return (
     <div data-testid="discover-page" className="pb-10">
-      <PageHeader eyebrow={t("disc.eyebrow")} title={t("disc.title")} testId="discover-header" />
+      <PageHeader eyebrow={t("disc.eyebrow")} title={t("disc.title")} testId="discover-header" width="max-w-5xl" />
 
       <div className="mx-auto max-w-5xl px-5">
         <p className="text-[15px] text-[#545E56] leading-relaxed mb-5 max-w-2xl">
@@ -68,7 +68,7 @@ export default function Discover() {
 
         {/* Type tabs + filter toggle */}
         <div className="flex items-center gap-2 mb-4">
-          <div className="flex gap-2 flex-1 overflow-x-auto no-scrollbar">
+          <div className="flex gap-2 flex-1 min-w-0 overflow-x-auto no-scrollbar -my-1 py-1 pr-6 [mask-image:linear-gradient(to_right,#000_calc(100%-28px),transparent)]">
             {TYPE_TABS.map((tb) => (
               <button
                 key={tb.key}
@@ -82,10 +82,11 @@ export default function Discover() {
           </div>
           <button
             data-testid="discover-filter-toggle"
+            aria-label={t("disc.filters")}
             onClick={() => setShowFilters((s) => !s)}
             className={`shrink-0 pill !py-2 !px-4 !text-[13px] ${showFilters || activeCount ? "pill-primary" : "pill-ghost"}`}
           >
-            <SlidersHorizontal className="h-3.5 w-3.5" /> {t("disc.filters")}{activeCount ? ` (${activeCount})` : ""}
+            <SlidersHorizontal className="h-3.5 w-3.5" /> <span className="hidden min-[400px]:inline">{t("disc.filters")}</span>{activeCount ? ` (${activeCount})` : ""}
           </button>
         </div>
 

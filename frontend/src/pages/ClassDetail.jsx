@@ -4,10 +4,13 @@ import { useParams, useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { MapPin, Video, Users, Clock, User as UserIcon } from "lucide-react";
 import { api } from "@/lib/api";
+import { contentImageUrl } from "@/components/ContentImageInput";
 import { useAuth } from "@/lib/auth";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import { ClassPurchaseOptions } from "@/components/ClassPurchaseOptions";
+import { useSeo, SITE_URL } from "@/lib/seo";
+import { eventJsonLd } from "@/seo/seoData.mjs";
 
 export default function ClassDetail() {
   const { id } = useParams();
@@ -51,6 +54,12 @@ export default function ClassDetail() {
     } finally { setBusy(false); }
   };
 
+  useSeo(c ? {
+    title: `${c.title} — Live ${c.location_type === "online" ? "Online " : ""}Yoga Class | Tony Yoga`,
+    description: `${c.title} with Tony Yoga: ${c.style || "yoga"} · ${c.level || "all levels"} · ${c.duration_minutes || 60} min${c.location_type === "online" ? " on Zoom" : " in Málaga"}. Book your place.`,
+    jsonLd: eventJsonLd(c, SITE_URL),
+  } : c === false ? { title: "Class not found | Tony Yoga", noindex: true } : null);
+
   if (c === null) return <><PageHeader back /><Spinner /></>;
   if (c === false) return <><PageHeader back title="Not found" /></>;
 
@@ -62,19 +71,21 @@ export default function ClassDetail() {
       <PageHeader eyebrow={c.style} title={c.title} back testId="classdetail-header" />
 
       <div className="mx-auto max-w-2xl px-5 space-y-6">
-        <div className="rounded-3xl bg-white border border-[#E5E6DF] p-6 space-y-3">
-          <div className="flex items-center gap-2 text-sm text-[#545E56]">
-            <Clock className="h-4 w-4 text-[#B25A45]" />
-            {start.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · {start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
-            <span className="text-[#839682]">· {c.duration_minutes} min</span>
+        <div className="rounded-3xl bg-white border border-[#E5E6DF] p-5 sm:p-6 space-y-3">
+          <div className="flex items-start gap-2.5 text-sm text-[#545E56]">
+            <Clock className="h-4 w-4 mt-0.5 shrink-0 text-[#B25A45]" />
+            <span className="min-w-0">
+              {start.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })} · <span className="whitespace-nowrap">{start.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}</span>{" "}
+              <span className="whitespace-nowrap text-[#839682]">· {c.duration_minutes} min</span>
+            </span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-[#545E56]">
-            {c.location_type === "online" ? <Video className="h-4 w-4 text-[#B25A45]" /> : <MapPin className="h-4 w-4 text-[#B25A45]" />}
-            {c.location_detail || (c.location_type === "online" ? "Online (Zoom)" : "Studio")}
+          <div className="flex items-start gap-2.5 text-sm text-[#545E56]">
+            {c.location_type === "online" ? <Video className="h-4 w-4 mt-0.5 shrink-0 text-[#B25A45]" /> : <MapPin className="h-4 w-4 mt-0.5 shrink-0 text-[#B25A45]" />}
+            <span className="min-w-0 break-words">{c.location_detail || (c.location_type === "online" ? "Online (Zoom)" : "Studio")}</span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-[#545E56]">
-            <Users className="h-4 w-4 text-[#B25A45]" />
-            {spotsLeft} of {c.capacity} spots open
+          <div className="flex items-start gap-2.5 text-sm text-[#545E56]">
+            <Users className="h-4 w-4 mt-0.5 shrink-0 text-[#B25A45]" />
+            <span>{spotsLeft} of {c.capacity} spots open</span>
           </div>
         </div>
 
@@ -84,7 +95,7 @@ export default function ClassDetail() {
             <div className="flex gap-4 items-start">
               <div className="h-14 w-14 rounded-full bg-white overflow-hidden shrink-0 flex items-center justify-center">
                 {c.instructor.photo_url ? (
-                  <img src={c.instructor.photo_url} alt="" className="h-full w-full object-cover" />
+                  <img src={contentImageUrl(c.instructor.photo_url)} alt={c.instructor.name || ""} className="h-full w-full object-cover object-top" />
                 ) : <UserIcon className="h-5 w-5 text-[#B25A45]" />}
               </div>
               <div className="min-w-0">

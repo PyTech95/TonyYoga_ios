@@ -5,7 +5,9 @@ import { api } from '@/lib/api';
 
 export const contentImageUrl = (url) => url?.startsWith('/api/') ? `${process.env.REACT_APP_BACKEND_URL}${url}` : url;
 
-export const ContentImageInput = ({ value = '', onChange, tid, label = 'Image', disabled = false, onUploadState }) => {
+// `absolute`: store the full backend URL (needed where the image is shown directly in the
+// iOS/Android app, whose own address is https://localhost).
+export const ContentImageInput = ({ value = '', onChange, tid, label = 'Image', disabled = false, onUploadState, absolute = false, hint }) => {
   const [uploading, setUploading] = useState(false);
   const upload = async (file) => {
     if (!file) return;
@@ -14,7 +16,7 @@ export const ContentImageInput = ({ value = '', onChange, tid, label = 'Image', 
     try {
       const form = new FormData(); form.append('file', file);
       const { data } = await api.post('/admin/uploads', form);
-      onChange(data.url);
+      onChange(absolute ? contentImageUrl(data.url) : data.url);
     } catch (error) { toast.error(error.response?.data?.detail || 'Image upload failed'); }
     finally { setUploading(false); onUploadState?.(false); }
   };
@@ -27,6 +29,7 @@ export const ContentImageInput = ({ value = '', onChange, tid, label = 'Image', 
         <input type="file" accept="image/png,image/jpeg,image/webp,image/gif" hidden data-testid={`${tid}-file`} disabled={disabled || uploading} onChange={e => { upload(e.target.files?.[0]); e.target.value = ''; }} />
       </label>
     </div>
+    {hint && <p className="text-[11px] text-[#6B7269]">{hint}</p>}
     {value && <img src={contentImageUrl(value)} alt={`${label} preview`} data-testid={`${tid}-preview`} className="h-20 max-w-full rounded-lg object-contain bg-[#F2F2EC]" />}
   </div>;
 };

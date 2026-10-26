@@ -7,9 +7,10 @@ import { assistantError, sessionRead, sessionWrite, streamAnswer } from '@/lib/a
 import { useAssistantVoice } from '@/lib/useAssistantVoice';
 import { AssistantLead } from './assistant/AssistantLead';
 import './assistant/assistant.css';
+import { uuid } from '@/lib/utils';
 
 const publicRoute = path => /^\/(?:$|home$|programs(?:\/|$)|shop(?:\/|$)|schedule(?:\/|$)|memberships$|workshops(?:\/|$)|find-your-path$|meditations$|asanas$|news$|teacher-training$|discover$|passes$)/.test(path);
-const newId = () => crypto.randomUUID();
+const newId = () => uuid();
 
 export default function AssistantWidget() {
   const { pathname } = useLocation();
@@ -39,6 +40,13 @@ export default function AssistantWidget() {
     if (!visible) { stop(); request.current?.abort(); setOpen(false); setTeaser(false); }
   }, [visible, stop]);
   useEffect(() => () => { request.current?.abort(); intro.current?.abort(); }, []);
+  // Pages add extra bottom space while the floating button is shown so it never
+  // covers the last card or button on the screen.
+  const launcherShown = !!cfg?.enabled && visible;
+  useEffect(() => {
+    document.body.classList.toggle('ty-assistant-visible', launcherShown);
+    return () => document.body.classList.remove('ty-assistant-visible');
+  }, [launcherShown]);
   useEffect(() => {
     const pause = () => { intro.current?.abort(); stop(); setTeaser(false); };
     window.addEventListener('tony-pause-assistant', pause);
@@ -138,7 +146,7 @@ export default function AssistantWidget() {
         <p data-testid="assistant-teaser-greeting">{greeting}</p>
         <button onClick={() => { showPanel(); setError(''); voice.start(); }} data-testid="assistant-teaser-open"><Mic size={15} />{audioBlocked ? 'Talk to Tony' : 'Let’s talk'}<ArrowUpRight size={15} /></button>
       </aside>}
-      <button className="ty-assistant-launcher" onClick={showPanel} aria-label="Open Tony’s assistant" title="Ask Tony’s assistant" data-testid="assistant-launcher"><MessageCircle size={23} /><span>Ask Tony</span></button>
+      <button className="ty-assistant-launcher" onClick={showPanel} aria-label="Open Tony’s assistant" title="Ask Tony’s assistant" data-testid="assistant-launcher"><MessageCircle size={23} /><span className="ty-assistant-launcher-label">Ask Tony</span></button>
     </>}
   </div>;
 }

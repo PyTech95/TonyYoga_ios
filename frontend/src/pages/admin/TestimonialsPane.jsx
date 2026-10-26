@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import Spinner from '@/components/Spinner';
 import { ContentImageInput } from '@/components/ContentImageInput';
 import { FeaturedTestimonialForm } from './FeaturedTestimonialForm';
+import { uuid } from '@/lib/utils';
 
 const input = 'w-full min-w-0 rounded-xl border border-[#E5E6DF] bg-white px-3 py-2 text-sm';
 export default function TestimonialsPane() {
@@ -61,7 +62,7 @@ export default function TestimonialsPane() {
         </ul>
       </section>
       <div className="flex flex-wrap gap-3">
-        <button disabled={busy} onClick={() => setItems(rows => [...rows, { id: crypto.randomUUID(), author: '', quote: '', role: '', photo: '', video_url: '' }])} data-testid="testimonial-add" className="pill pill-ghost"><Plus size={16} /> Add testimonial</button>
+        <button disabled={busy} onClick={() => setItems(rows => [...rows, { id: uuid(), author: '', quote: '', role: '', photo: '', video_url: '' }])} data-testid="testimonial-add" className="pill pill-ghost"><Plus size={16} /> Add testimonial</button>
         <button disabled={busy || uploading} onClick={save} data-testid="testimonials-save" className="pill pill-primary">{busy ? 'Saving…' : uploading ? 'Uploading…' : 'Save & publish'}</button>
       </div>
     </>}

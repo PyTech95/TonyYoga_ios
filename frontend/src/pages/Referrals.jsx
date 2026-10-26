@@ -4,6 +4,7 @@ import { Copy, Share2, Send, Gift } from "lucide-react";
 import { api } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
+import { copyText } from "@/lib/platform";
 
 export default function Referrals() {
   const [stats, setStats] = useState(null);
@@ -19,10 +20,8 @@ export default function Referrals() {
   useEffect(() => { load(); }, []);
 
   const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(stats.share_url);
-      toast.success("Link copied.");
-    } catch { toast.error("Could not copy"); }
+    if (await copyText(stats.share_url)) toast.success("Link copied.");
+    else toast.error("Could not copy");
   };
 
   const share = async () => {
@@ -33,7 +32,10 @@ export default function Referrals() {
           text: "Come practice with Tony — your first class is free.",
           url: stats.share_url,
         });
-      } catch {}
+      } catch (err) {
+        // User closed the share sheet → nothing to do; anything else → copy instead.
+        if (err?.name !== "AbortError") copy();
+      }
     } else {
       copy();
     }
@@ -90,18 +92,18 @@ export default function Referrals() {
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-2xl bg-white border border-[#E5E6DF] p-4 text-center">
+        <div className="grid grid-cols-3 gap-2 min-[380px]:gap-3">
+          <div className="rounded-2xl bg-white border border-[#E5E6DF] px-2 py-4 text-center">
             <div className="serif text-2xl" data-testid="referrals-signups">{stats.total_signups}</div>
-            <div className="eyebrow mt-1 !text-[10px]">Sign-ups</div>
+            <div className="eyebrow mt-1 !text-[10px] !tracking-[0.12em] leading-tight">Sign-ups</div>
           </div>
-          <div className="rounded-2xl bg-white border border-[#E5E6DF] p-4 text-center">
+          <div className="rounded-2xl bg-white border border-[#E5E6DF] px-2 py-4 text-center">
             <div className="serif text-2xl" data-testid="referrals-converted">{stats.total_converted}</div>
-            <div className="eyebrow mt-1 !text-[10px]">Converted</div>
+            <div className="eyebrow mt-1 !text-[10px] !tracking-[0.12em] leading-tight">Converted</div>
           </div>
-          <div className="rounded-2xl bg-white border border-[#E5E6DF] p-4 text-center">
+          <div className="rounded-2xl bg-white border border-[#E5E6DF] px-2 py-4 text-center">
             <div className="serif text-2xl text-[#B25A45]" data-testid="referrals-credit-days">{stats.pending_credits_days}</div>
-            <div className="eyebrow mt-1 !text-[10px]">Free days</div>
+            <div className="eyebrow mt-1 !text-[10px] !tracking-[0.12em] leading-tight">Free days</div>
           </div>
         </div>
 

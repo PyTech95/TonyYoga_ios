@@ -14,6 +14,8 @@ from typing import Any, Dict, Optional
 from fastapi import HTTPException, Request
 
 from core import api, db, now_utc, gen_id, require_role
+from content_settings import safe_url
+from routers.cms import schedule_prerender
 
 
 def _slugify(title: str) -> str:
@@ -79,7 +81,7 @@ async def admin_create_news(payload: Dict[str, Any], request: Request):
         "title": title,
         "excerpt": payload.get("excerpt", "")[:400],
         "body": payload.get("body", ""),
-        "cover_image": payload.get("cover_image", ""),
+        "cover_image": safe_url(payload.get("cover_image") or ""),
         "category": payload.get("category", "news"),  # news | blog | event
         "tags": payload.get("tags", []),
         "event_date": payload.get("event_date"),  # ISO string, optional (only for category=event)
@@ -92,6 +94,7 @@ async def admin_create_news(payload: Dict[str, Any], request: Request):
     }
     await db.news_posts.insert_one(doc)
     doc.pop("_id", None)
+    schedule_prerender()
     return doc
 
 
@@ -103,6 +106,9 @@ async def admin_patch_news(post_id: str, payload: Dict[str, Any], request: Reque
     update = {k: v for k, v in payload.items() if k in allowed}
     if not update:
         return {"updated": 0}
+    if "cover_image" in update:
+        update["cover_image"] = safe_url(update["cover_image"] or "")
+    update["updated_at"] = now_utc().isoformat()
     # Auto-slug when title changes and slug not overridden
     if "slug" in update:
         update["slug"] = await _unique_slug(_slugify(update["slug"]), ignore_id=post_id)
@@ -113,6 +119,7 @@ async def admin_patch_news(post_id: str, payload: Dict[str, Any], request: Reque
     if update.get("is_published") and not existing.get("published_at"):
         update["published_at"] = now_utc().isoformat()
     await db.news_posts.update_one({"id": post_id}, {"$set": update})
+    schedule_prerender()
     return {"updated": len(update)}
 
 
@@ -122,4 +129,5 @@ async def admin_delete_news(post_id: str, request: Request):
     res = await db.news_posts.delete_one({"id": post_id})
     if res.deleted_count == 0:
         raise HTTPException(404, "Post not found")
+    schedule_prerender()
     return {"deleted": 1}

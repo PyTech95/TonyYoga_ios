@@ -118,7 +118,7 @@ export default function PrivateSessions() {
           <div className="rounded-3xl bg-white border border-[#E5E6DF] p-6 space-y-5" data-testid="private-booking-form">
             <div>
               <div className="eyebrow mb-2">Choose your sessions</div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+              <div className={`grid gap-2 min-[380px]:gap-3 ${options.length === 3 ? "grid-cols-3" : "grid-cols-2 sm:grid-cols-3"}`}>
                 {options.map((n) => {
                   const pkg = pkgFor(n);
                   const listPrice = priceEach * n;
@@ -127,7 +127,7 @@ export default function PrivateSessions() {
                   return (
                     <button key={n} type="button" onClick={() => { setForm({ ...form, sessions: n }); setSelectedSlots((s) => s.slice(0, n)); }}
                       data-testid={`private-count-${n}`}
-                      className={`relative rounded-2xl border p-4 text-center transition ${form.sessions === n ? "border-[#B25A45] bg-[#FBF1EE]" : "border-[#E5E6DF] hover:border-[#D8D9CF]"}`}>
+                      className={`relative rounded-2xl border px-2 py-4 text-center transition ${form.sessions === n ? "border-[#B25A45] bg-[#FBF1EE]" : "border-[#E5E6DF] hover:border-[#D8D9CF]"}`}>
                       {pkg?.label && <span className="block break-words text-[9px] font-bold uppercase text-[#B25A45] mb-1">{pkg.label}</span>}
                       <div className="serif text-2xl">{n}</div>
                       <div className="text-[11px] text-[#6B7269] mt-0.5">session{n > 1 ? "s" : ""}</div>

@@ -1,0 +1,22 @@
+{
+  "summary": "Verified Printful truthful-connection bug fix. Backend + frontend all pass. In not-connected state: badge shows 'Not connected', token input + connect button visible, sync/verify/disconnect buttons correctly hidden. Submitting an invalid token (with 'Bearer ' prefix + double space) returns HTTP 400 with the friendly rejection message ('Printful rejected that token. Create a fresh token at Printful → Settings → Developers → API tokens...'), the token is rolled back so status.configured stays false, the badge stays 'Not connected', and the token input remains available for retry — the exact regression the fix targets. /api/admin/printful/verify with no token returns {ok:false, error:'No token configured.'}. Did NOT test the green-connected happy path (no valid Printful token available, as per request).",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_printful_bugfix_iter12.py",
+    "/app/test_reports/pytest/iter12_printful.xml"
+  ],
+  "action_items": [],
+  "critical_code_review_comments": [
+    "printful.py connect endpoint correctly sanitizes token (strips quotes, 'Bearer ', 'Authorization:' prefix) and rolls back the setting on rejection — good defensive behaviour.",
+    "PrintMediaPane.jsx: on successful connect, code optimistically sets health={ok:true} before autoSync — acceptable because loadStatus() + subsequent verify on remount reconciles. Minor: a re-verify after autoSync could catch the (rare) case where connect succeeds but the token is immediately revoked; low priority."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (4/4)", "frontend": "100% (10/10 steps)"},
+  "test_credentials": "tony@tonyyoga.com / Welcome@123###2 (admin)",
+  "seed_data_creation": "None. Test cleared any pre-existing printful_token via /api/admin/printful/disconnect at start of each test.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend pytest at /app/backend/tests/test_printful_bugfix_iter12.py covers the connect-rollback + verify + status flow. To test the green 'Connected' path, a real valid Printful private API token with store access is required — not available in this environment. Playwright script (in tool output) covers full UI regression for Print Media pane not-connected + invalid-token flows.",
+  "rca_of_the_issue": "Original bug: badge derived from `status.configured` which was true whenever ANY token STRING was saved — regardless of whether Printful actually accepted it. The token input was gated on !configured, so an admin with a stale/expired token was locked out of pasting a new one. Fix (verified working): (1) backend connect endpoint now sanitizes the pasted token (strips quotes, 'Bearer ', 'Authorization:') and immediately verifies against Printful /stores; on rejection it rolls back the saved token (empties printful_token setting) and returns a friendly 400 message. (2) frontend now derives display state from a live verify call: healthy = configured && verify.ok, tokenBad = configured && verify.ok===false; token input is shown whenever !healthy (including tokenBad), and the sync card is gated on healthy — so the admin can never be stuck on a green badge with a rejected token, and can always paste a replacement without disconnecting."
+}

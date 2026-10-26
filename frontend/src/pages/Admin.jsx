@@ -4,6 +4,8 @@ import { Menu, ArrowUpRight, ChevronRight } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import NotificationBell from "@/components/NotificationBell";
+import { isNativeApp } from "@/lib/platform";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import { AdminSidebar } from "./admin/AdminSidebar";
 import { ADMIN_NAV } from "./admin/adminNavigation";
 import { ADMIN_PANES } from "./admin/adminPanes";
@@ -34,11 +36,11 @@ export default function Admin() {
     <div className="admin-main">
       <header className="admin-topbar">
         <div className="admin-breadcrumb">{!desktop && <button className="admin-icon-button" data-testid="admin-menu-open" aria-label="Open admin menu" title="Open menu" onClick={() => setOpen(true)}><Menu size={21} /></button>}<span className="hidden sm:inline">Workspace</span><ChevronRight size={13} className="hidden sm:inline" /><strong data-testid="admin-current-section">{active.label}</strong></div>
-        <div className="admin-top-actions"><Link to="/" data-testid="admin-view-website" className="admin-website-link">View website <ArrowUpRight size={15} /></Link><NotificationBell /></div>
+        <div className="admin-top-actions">{isNativeApp() ? <Link to="/home" data-testid="admin-view-website" className="admin-website-link">Member app <ArrowUpRight size={15} /></Link> : <Link to="/" data-testid="admin-view-website" className="admin-website-link">View website <ArrowUpRight size={15} /></Link>}<NotificationBell /></div>
       </header>
       <main className="admin-content" data-testid="admin-main-content">
         {active.key !== "stats" && <div className="admin-page-heading"><p className="admin-kicker">MANAGEMENT</p><h1 data-testid="admin-header">{active.label}</h1></div>}
-        <Suspense fallback={<p data-testid="admin-pane-loading" className="py-10 text-sm">Loading workspace…</p>}><Pane key={active.key} /></Suspense>
+        <ErrorBoundary resetKey={active.key}><Suspense fallback={<p data-testid="admin-pane-loading" className="py-10 text-sm">Loading workspace…</p>}><Pane key={active.key} /></Suspense></ErrorBoundary>
       </main>
     </div>
   </div>;

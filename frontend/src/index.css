@@ -12,11 +12,29 @@
     --tyink: #1C221F;
     --tymuted: #6B7269;
     --tyline: #E5E6DF;
+
+    /* Device safe areas (notch / Dynamic Island / Android status bar / home indicator).
+       Capacitor's SystemBars / safe-area plugins inject --safe-area-inset-* on Android
+       WebViews that don't report env() yet; everywhere else env() is used. */
+    --sat: var(--safe-area-inset-top, env(safe-area-inset-top, 0px));
+    --sab: var(--safe-area-inset-bottom, env(safe-area-inset-bottom, 0px));
+    --sal: var(--safe-area-inset-left, env(safe-area-inset-left, 0px));
+    --sar: var(--safe-area-inset-right, env(safe-area-inset-right, 0px));
+    /* Top offset for page content. AppShell sets it to 0 when the staff bar
+       (which already pads for the status bar) sits above the page. */
+    --page-top: var(--sat);
+    /* Height of the bottom tab bar (without the home-indicator inset). */
+    --nav-h: 66px;
 }
 
 html, body, #root {
-    height: 100%;
+    min-height: 100%;
     background: var(--tycream);
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
 }
 
 body {
@@ -26,7 +44,34 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
     overscroll-behavior-y: none;
+    -webkit-tap-highlight-color: transparent;
+    overflow-x: hidden;
 }
+
+/* Remove the 300 ms double-tap delay and accidental double-tap zoom on controls. */
+a, button, [role="button"], input, select, textarea, label, summary { touch-action: manipulation; }
+
+/* iOS Safari / WKWebView zoom into any field whose text is smaller than 16px and
+   stay zoomed after the keyboard closes. Keep form text at 16px on phones. */
+@media (max-width: 767px) {
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="file"]),
+    select,
+    textarea { font-size: 16px !important; }
+}
+
+/* Inside the installed iOS / Android app: no long-press image callouts or drag ghosts. */
+html.ty-native img { -webkit-touch-callout: none; -webkit-user-drag: none; user-select: none; }
+html.ty-native a { -webkit-touch-callout: none; }
+
+/* While the on-screen keyboard is open, keep the tab bar and floating buttons out of the way. */
+body.ty-typing [data-testid="bottom-nav"],
+body.ty-typing .ty-assistant-launcher,
+body.ty-typing .ty-assistant-teaser,
+body.ty-typing .ty-download-dock { display: none !important; }
+
+/* An image that fails to load (offline, removed file) shows a calm placeholder
+   instead of the browser's broken-image icon and alt text spilling over cards. */
+img.ty-img-broken { visibility: hidden; }
 
 .serif { font-family: 'Fraunces', Georgia, serif; letter-spacing: -0.01em; }
 .eyebrow { font-family: 'Fraunces', Georgia, serif; font-size: 11px; letter-spacing: 0.28em; text-transform: uppercase; color: var(--tysage); }
@@ -96,9 +141,12 @@ body {
 .animate-delay-2 { animation-delay: 160ms; }
 .animate-delay-3 { animation-delay: 240ms; }
 
-/* Safe area for iOS PWA */
-.safe-bottom { padding-bottom: calc(env(safe-area-inset-bottom) + 88px); }
-.safe-top { padding-top: env(safe-area-inset-top); }
+/* Safe areas for the iOS / Android app and installed PWA */
+.safe-bottom { padding-bottom: calc(var(--sab) + var(--nav-h) + 28px); }
+/* Leave room for the floating "Ask Tony" button above the tab bar. */
+body.ty-assistant-visible .safe-bottom { padding-bottom: calc(var(--sab) + var(--nav-h) + 84px); }
+.safe-top { padding-top: var(--page-top); }
+.safe-x { padding-left: var(--sal); padding-right: var(--sar); }
 
 /* Line clamp helpers */
 .clamp-2 { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }

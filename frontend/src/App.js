@@ -48,9 +48,15 @@ import Privacy from "@/pages/legal/Privacy";
 import Terms from "@/pages/legal/Terms";
 import AccountDeletion from "@/pages/legal/AccountDeletion";
 import Support from "@/pages/legal/Support";
+import Locations from "@/pages/Locations";
+import LocationDetail from "@/pages/LocationDetail";
+import CustomPage from "@/pages/CustomPage";
+import NewsArticle from "@/pages/NewsArticle";
+import { RouteSeo } from "@/lib/seo";
 import { AppDownloads } from "@/components/AppDownloads";
 import AssistantWidget from "@/components/AssistantWidget";
 import LiveEditor from "@/lib/liveEditor";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import "@/App.css";
 import { isIOSApp } from "@/lib/iosPlatform";
 import IOSCommerceLifecycle from "@/components/IOSCommerceLifecycle";
@@ -83,11 +89,14 @@ function AppRoot() {
 }
 
 export default function App() {
+  const NATIVE = isNativeApp();
   return (
     <AuthProvider>
       <BrowserRouter>
         {!isIOSApp() && <UsageTracker />}
         <IOSCommerceLifecycle />
+        {/* Default title / description / canonical / robots per route (website only). */}
+        <RouteSeo />
         <Routes>
           <Route path="/admin" element={<RequireAuth><Admin /></RequireAuth>} />
           <Route path="/certificate/:code" element={<Certificate />} />
@@ -95,6 +104,12 @@ export default function App() {
           <Route path="/terms" element={<Terms />} />
           <Route path="/account-deletion" element={<AccountDeletion />} />
           <Route path="/support" element={<Support />} />
+          <Route path="/locations" element={<Locations />} />
+          <Route path="/locations/:slug" element={<LocationDetail />} />
+          {/* Pages from Admin → Custom pages and Journal posts: website layout on the web,
+              inside the app shell (tab bar, back button) in the iOS/Android app. */}
+          {!NATIVE && <Route path="/news/:slug" element={<NewsArticle />} />}
+          {!NATIVE && <Route path="/:slug" element={<CustomPage />} />}
           <Route element={<AppShell />}>
             <Route path="/" element={<AppRoot />} />
             <Route path="/welcome" element={<Landed />} />
@@ -137,14 +152,19 @@ export default function App() {
             <Route path="/instructor" element={<RequireAuth><Instructor /></RequireAuth>} />
             <Route path="/checkout/success" element={<CheckoutSuccess />} />
             <Route path="/checkout/cancel" element={<CheckoutCancel />} />
+            {NATIVE && <Route path="/news/:slug" element={<NewsArticle />} />}
+            {NATIVE && <Route path="/:slug" element={<CustomPage />} />}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
-        <AppDownloads />
-        {isIOSApp() ? <IOSAssistantConsent><AssistantWidget /></IOSAssistantConsent> : <AssistantWidget />}
-        {!isIOSApp() && <LiveEditor />}
+        {/* Floating extras must never take the whole app down with them. */}
+        <ErrorBoundary fallback={null}><AppDownloads /></ErrorBoundary>
+        <ErrorBoundary fallback={null}>{isIOSApp() ? <IOSAssistantConsent><AssistantWidget /></IOSAssistantConsent> : <AssistantWidget />}</ErrorBoundary>
+        {!isIOSApp() && <ErrorBoundary fallback={null}><LiveEditor /></ErrorBoundary>}
         <Toaster
           position="top-center"
+          offset={{ top: "calc(var(--sat) + 16px)" }}
+          mobileOffset={{ top: "calc(var(--sat) + 10px)", left: "12px", right: "12px" }}
           toastOptions={{
             style: {
               background: "#1C221F",

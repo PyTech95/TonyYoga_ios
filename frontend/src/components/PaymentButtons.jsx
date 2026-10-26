@@ -6,6 +6,7 @@ import { CreditCard, ShieldCheck, Gift } from "lucide-react";
 import { api } from "@/lib/api";
 import { usePaymentProviders } from "@/lib/providers";
 import { useAuth } from "@/lib/auth";
+import { checkoutContext, markExternalCheckout } from "@/lib/platform";
 
 /**
  * Twin checkout buttons — PayPal (primary) + Stripe card, with optional
@@ -73,11 +74,11 @@ function WebPaymentButtons({
         item_id: resolvedItemId,
         quantity,
         metadata: metadata || undefined,
-        origin_url: window.location.origin,
+        ...checkoutContext(),
         apply_credit: applyCredit,
       });
       if (handleCreditOnly(data)) return;
-      if (data?.url) window.location.href = data.url;
+      if (data?.url) { markExternalCheckout(); window.location.href = data.url; }
       else toast.error(`Could not start ${provider === "paypal" ? "PayPal" : "Stripe"} checkout`);
     } catch (e) {
       toast.error(e?.response?.data?.detail || (provider === "paypal" ? "PayPal not available yet" : "Checkout failed"));

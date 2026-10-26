@@ -50,9 +50,8 @@ export default function Register() {
 
   return (
     <div data-testid="register-page">
-      <div className="flex justify-end px-6 pt-4"><LanguageToggle /></div>
-      <PageHeader eyebrow={refCode ? t("register.eyebrow_invited") : t("register.eyebrow")} title={t("register.title")} back testId="register-header" showLogo />
-      <form onSubmit={submit} className="mx-auto max-w-md px-6 mt-4 space-y-4">
+      <PageHeader eyebrow={refCode ? t("register.eyebrow_invited") : t("register.eyebrow")} title={t("register.title")} back testId="register-header" showLogo action={<LanguageToggle />} />
+      <form onSubmit={submit} className="mx-auto max-w-md px-6 mt-4 space-y-4" style={{ paddingBottom: "calc(var(--sab) + 2.5rem)" }}>
         <label className="block">
           <span className="eyebrow">{t("register.name")}</span>
           <input

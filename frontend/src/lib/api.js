@@ -24,7 +24,10 @@ export const tokenStore = {
   },
 };
 
-export const api = axios.create({ baseURL: API_BASE, timeout: 20000 });
+// A stalled request (e.g. behind a reverse proxy) surfaces an error instead of spinning forever.
+// The website / Android allow 45s (admin photo and video uploads); the iPhone app keeps 20s.
+// Long operations override per call.
+export const api = axios.create({ baseURL: API_BASE, timeout: isIOSApp() ? 20000 : 45000 });
 
 api.interceptors.request.use((cfg) => {
   if (isIOSApp() && isLegacyPaymentRequest(cfg.url)) {

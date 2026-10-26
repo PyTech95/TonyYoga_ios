@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from typing import Dict
 from fastapi import Depends, HTTPException, Request
 
-from core import api, db, logger, now_utc, gen_id, get_current_user
+from core import api, db, logger, now_utc, gen_id, get_current_user, checkout_return_base
 from models import CheckoutRequest
 from routers.settings import get_setting
 from access_terms import make_grant, fulfill_access, class_pricing, parse_dt, term_window
@@ -84,7 +84,7 @@ async def _require_stripe_key() -> str:
     return key
 
 
-async def _create_subscription_session(*, user: dict, plan: dict, origin_url: str) -> dict:
+async def _create_subscription_session(*, user: dict, plan: dict, origin_url: str, return_query: str = "") -> dict:
     """Create a Stripe Checkout session in subscription mode with optional trial_period_days.
 
     Uses the official Stripe SDK in subscription mode.
@@ -125,8 +125,8 @@ async def _create_subscription_session(*, user: dict, plan: dict, origin_url: st
             },
             "quantity": 1,
         }],
-        success_url=f"{origin_url}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}",
-        cancel_url=f"{origin_url}/checkout/cancel",
+        success_url=f"{origin_url}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}{return_query}",
+        cancel_url=f"{origin_url}/checkout/cancel" + (f"?{return_query.lstrip('&')}" if return_query else ""),
         metadata=metadata,
         subscription_data=subscription_data,
     )
@@ -162,19 +162,22 @@ TEACHER_TRAINING_CATALOG = {
 
 @api.get("/teacher-training")
 async def list_teacher_training():
-    """Public: the teacher-training tiers rendered on the /teacher-training page."""
-    return [TEACHER_TRAINING_CATALOG[k] for k in ("core26", "core40", "core84")]
+    """Public: the teacher-training tiers rendered on the /teacher-training page
+    (editable in Admin → Packages & prices)."""
+    from routers.cms import get_tt_catalog
+    return [t for t in (await get_tt_catalog()).values() if t.get("active", True)]
 
 
 async def _resolve_price(item_type: str, item_id: str, quantity: int, user_id: str = None):
     if item_type == "teacher_training":
-        t = TEACHER_TRAINING_CATALOG.get(item_id)
-        if not t:
+        from routers.cms import get_tt_catalog
+        t = (await get_tt_catalog()).get(item_id)
+        if not t or not t.get("active", True):
             raise HTTPException(404, "Training not found")
-        return t["price"], "eur", {"training_name": t["name"], "training_dates": t["dates"]}
+        return t["price"], (t.get("currency") or "eur").lower(), {"training_name": t["name"], "training_dates": t.get("dates", "")}
     if item_type == "membership":
         plan = await db.membership_plans.find_one({"id": item_id})
-        if not plan: raise HTTPException(404, "Plan not found")
+        if not plan or plan.get("is_active") is False: raise HTTPException(404, "Plan not found")
         return plan["price"], plan["currency"], {"plan_name": plan["name"]}
     if item_type == "program":
         program = await db.programs.find_one({"id": item_id})
@@ -234,22 +237,16 @@ async def _resolve_price(item_type: str, item_id: str, quantity: int, user_id: s
         if reg.get("status") != "deposit_paid":
             raise HTTPException(400, f"Reservation not eligible for balance (status={reg.get('status')})")
         return reg["balance_eur"], "eur", {"reservation_id": item_id, "workshop_title": reg.get("workshop_title", ""), "payment_kind": "balance"}
-    if item_type == "drop_in":
-        p = {"price": 22.0}
-        try:
-            from routers.passes import PASS_CATALOG
-            p = PASS_CATALOG.get("drop_in", p)
-        except Exception:
-            pass
-        return p["price"], "usd", {"description": "Drop-in class", "pass_type": "drop_in", "credits": "1"}
-    if item_type == "class_pack":
-        p = {"price": 99.0}
-        try:
-            from routers.passes import PASS_CATALOG
-            p = PASS_CATALOG.get("class_pack", p)
-        except Exception:
-            pass
-        return p["price"], "usd", {"description": "5-class pack", "pass_type": "class_pack", "credits": "5"}
+    if item_type in ("drop_in", "class_pack"):
+        # Price, currency and credits come from Admin → Packages & prices (charged in
+        # the currency shown to the buyer).
+        from routers.cms import get_pass_catalog
+        p = (await get_pass_catalog()).get(item_type)
+        if not p or not p.get("active", True):
+            raise HTTPException(404, "This pass is not available.")
+        return p["price"], (p.get("currency") or "eur").lower(), {
+            "description": p.get("title") or ("Drop-in class" if item_type == "drop_in" else "5-class pack"),
+            "pass_type": item_type, "credits": str(int(p.get("credits") or (1 if item_type == "drop_in" else 5)))}
     if item_type == "private_session":
         req = await db.private_session_requests.find_one({"id": item_id, "user_id": user_id}, {"_id": 0})
         if not req:
@@ -378,13 +375,14 @@ async def create_checkout(payload: CheckoutRequest, request: Request, user: dict
     # explicitly enables it AND a real Stripe key is configured. Otherwise we fall
     # back to the safe one-time payment flow (customer pays for one full billing
     # cycle up-front; admin can extend manually).
+    return_base, return_query = checkout_return_base(payload.origin_url, payload.client)
     subs_enabled = bool(await get_setting("stripe_subscriptions_enabled"))
     if payload.item_type == "membership" and subs_enabled:
         plan = await db.membership_plans.find_one({"id": payload.item_id})
         if not plan:
             raise HTTPException(404, "Plan not found")
         try:
-            session = await _create_subscription_session(user=user, plan=plan, origin_url=payload.origin_url)
+            session = await _create_subscription_session(user=user, plan=plan, origin_url=return_base, return_query=return_query)
         except stripe.error.StripeError as e:
             logger.exception(f"Stripe subscription creation failed: {e}")
             raise HTTPException(503, "Unable to start the subscription right now. Please try again shortly.")
@@ -416,8 +414,8 @@ async def create_checkout(payload: CheckoutRequest, request: Request, user: dict
                                    credit_applied=credit_applied, meta=meta, access_snapshot=access_snapshot)
         return {"credit_only": True, "credit_applied": credit_applied}
 
-    success_url = f"{payload.origin_url}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}"
-    cancel_url = f"{payload.origin_url}/checkout/cancel?session_id={{CHECKOUT_SESSION_ID}}"
+    success_url = f"{return_base}/checkout/success?session_id={{CHECKOUT_SESSION_ID}}{return_query}"
+    cancel_url = f"{return_base}/checkout/cancel?session_id={{CHECKOUT_SESSION_ID}}{return_query}"
     metadata = {
         "user_id": user["id"], "user_email": user["email"],
         "item_type": payload.item_type, "item_id": payload.item_id,
@@ -705,7 +703,8 @@ async def _fulfill_payment(txn: dict):
             except Exception as e:
                 logger.warning(f"retreat balance email failed for {reservation_id}: {e}")
     elif item_type == "teacher_training":
-        t = TEACHER_TRAINING_CATALOG.get(item_id, {})
+        from routers.cms import get_tt_catalog
+        t = (await get_tt_catalog()).get(item_id) or TEACHER_TRAINING_CATALOG.get(item_id, {})
         await db.teacher_training_registrations.update_one({"_id": delivery_id}, {"$setOnInsert": {
             "id": delivery_id, "user_id": user_id, "user_email": txn.get("user_email"),
             "training_id": item_id, "training_name": t.get("name"),
@@ -713,7 +712,12 @@ async def _fulfill_payment(txn: dict):
             "status": "confirmed", "created_at": paid_at,
         }}, upsert=True)
     elif item_type in ("drop_in", "class_pack"):
-        credits = 1 if item_type == "drop_in" else 5
+        # Credits bought are recorded on the transaction when checkout starts.
+        try:
+            credits = int((txn.get("metadata") or {}).get("credits") or 0)
+        except (TypeError, ValueError):
+            credits = 0
+        credits = credits or (1 if item_type == "drop_in" else 5)
         await db.class_passes.update_one(
             {"_id": delivery_id},
             {"$setOnInsert": {"id": delivery_id, "user_id": user_id, "active": True,

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
+import { uuid } from "@/lib/utils";
 
 const PUBLIC_PAGES = new Set(["/", "/home", "/welcome", "/schedule", "/programs", "/asanas", "/discover", "/meditations", "/find-your-path", "/quiz", "/breathwork", "/memberships", "/shop", "/teacher-training", "/private-sessions", "/challenges", "/workshops", "/news", "/broadcasts", "/leaderboard", "/passes", "/support", "/privacy", "/terms"]);
 const SESSION_KEY = "ty_usage_session";
@@ -9,7 +10,7 @@ function sessionId() {
   const now = Date.now();
   let session;
   try { session = JSON.parse(sessionStorage.getItem(SESSION_KEY)); } catch {}
-  if (!session?.id || now - session.last > 30 * 60 * 1000) session = { id: crypto.randomUUID() };
+  if (!session?.id || now - session.last > 30 * 60 * 1000) session = { id: uuid() };
   session.last = now;
   sessionStorage.setItem(SESSION_KEY, JSON.stringify(session));
   return session.id;
@@ -46,7 +47,7 @@ export const UsageTracker = () => {
         const load = !measured.current && nav?.loadEventEnd > 0 ? Math.round(nav.loadEventEnd - nav.startTime) : null;
         measured.current = true;
         sent.current = key;
-        await api.post("/analytics/events", { event_id: crypto.randomUUID(), session_id: sessionId(), path: root,
+        await api.post("/analytics/events", { event_id: uuid(), session_id: sessionId(), path: root,
           platform: platform(), load_ms: load !== null && load <= 120000 ? load : null });
       } catch { /* Usage collection must never interrupt the visitor experience. */ }
     }, 750);

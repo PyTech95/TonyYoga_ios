@@ -59,9 +59,8 @@ export default function Login() {
 
   return (
     <div data-testid="login-page">
-      <div className="flex justify-end px-6 pt-4"><LanguageToggle /></div>
-      <PageHeader eyebrow={t("login.eyebrow")} title={t("login.title")} back testId="login-header" showLogo />
-      <form onSubmit={submit} className="mx-auto max-w-md px-6 mt-4 space-y-4">
+      <PageHeader eyebrow={t("login.eyebrow")} title={t("login.title")} back testId="login-header" showLogo action={<LanguageToggle />} />
+      <form onSubmit={submit} className="mx-auto max-w-md px-6 mt-4 space-y-4" style={{ paddingBottom: "calc(var(--sab) + 2.5rem)" }}>
         <label className="block">
           <span className="eyebrow">{t("login.email")}</span>
           <input

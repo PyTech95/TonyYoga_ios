@@ -15,7 +15,7 @@ async def seed():
             "password_hash": hash_password(admin_password),
             "role": "admin", "active": True,
             "bio": "Founder & lead instructor. 50+ years of practice. Trained at Ghosh's College of Physical Education, Kolkata (1983). Creator of The Ideal Yoga Practice — Core 26+, Core 40, Core 84.",
-            "photo_url": "https://images.squarespace-cdn.com/content/v1/620bca2d082bbf5542408178/2e0d829f-31b4-44fe-98e5-25e88270dd0f/Untitled+design.jpg",
+            "photo_url": "/brand/tony/tony-face.jpg",
             "years_experience": 50, "styles": ["Core 26+", "Core 40", "Core 84", "Tree of Yoga"],
             "source": "seed", "created_at": now_utc().isoformat(),
         })

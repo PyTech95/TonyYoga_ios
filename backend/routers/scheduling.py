@@ -23,14 +23,18 @@ from email_service import (
 
 
 # ---------------- Instructors ----------------
+# Only what students may see about a teacher — never email, tax ID, IBAN or payout details.
+PUBLIC_INSTRUCTOR = {"_id": 0, "id": 1, "name": 1, "bio": 1, "photo_url": 1, "years_experience": 1, "styles": 1, "level": 1, "role": 1}
+
+
 @api.get("/instructors")
 async def list_instructors():
-    return await db.users.find({"role": "instructor", "active": True}, {"_id": 0, "password_hash": 0}).to_list(200)
+    return await db.users.find({"role": "instructor", "active": True}, PUBLIC_INSTRUCTOR).to_list(200)
 
 
 @api.get("/instructors/{instructor_id}")
 async def get_instructor(instructor_id: str):
-    inst = await db.users.find_one({"id": instructor_id, "role": "instructor"}, {"_id": 0, "password_hash": 0})
+    inst = await db.users.find_one({"id": instructor_id, "role": "instructor"}, PUBLIC_INSTRUCTOR)
     if not inst:
         raise HTTPException(404, "Not found")
     return inst
@@ -333,7 +337,7 @@ async def list_instances(
         query["status"] = {"$ne": "cancelled"}
     rows = await db.class_instances.find(query, {"_id": 0}).sort("start_time", 1).to_list(500)
     instructor_ids = list({r["instructor_id"] for r in rows})
-    instructors = {u["id"]: u for u in await db.users.find({"id": {"$in": instructor_ids}}, {"_id": 0, "password_hash": 0}).to_list(500)}
+    instructors = {u["id"]: u for u in await db.users.find({"id": {"$in": instructor_ids}}, PUBLIC_INSTRUCTOR).to_list(500)}
     for r in rows:
         # Host-only / gated fields must not leak through the public list endpoint.
         r.pop("zoom_start_url", None)
@@ -371,8 +375,7 @@ async def get_instance(instance_id: str, user: Optional[dict] = Depends(get_opti
         inst.pop("zoom_meeting_id", None)
     if not staff and inst.get("location_type") == "online":
         inst["location_detail"] = "Online (Zoom)"
-    instructor = await db.users.find_one({"id": inst["instructor_id"]}, {"_id": 0, "password_hash": 0})
-    inst["instructor"] = instructor
+    inst["instructor"] = await db.users.find_one({"id": inst["instructor_id"]}, PUBLIC_INSTRUCTOR)
     return inst
 
 

@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TonYoga</string>
+    <string name="title_activity_main">TonYoga</string>
+    <string name="package_name">com.tonyoga.app</string>
+    <string name="custom_url_scheme">com.tonyoga.app</string>
+</resources>
