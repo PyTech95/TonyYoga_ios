@@ -4,13 +4,13 @@ import { ImageIcon, Upload, RotateCcw } from "lucide-react";
 import { api } from "@/lib/api";
 import { inputCls } from "./shared";
 import { contentImageUrl } from "@/components/ContentImageInput";
-import { SLOT_DEFAULTS, TONY } from "@/lib/brandMedia";
+import { SLOT_DEFAULTS } from "@/lib/brandMedia";
 import { invalidateSiteData } from "@/lib/siteData";
 
 // Photo slots the admin can override. Empty value → the built-in photo of Tony
 // (shown greyed with a "Built-in" tag so it's clear what visitors see).
 const SLOTS = [
-  { key: "hero", label: "Homepage hero photo", hint: "Shown when the hero video is off (and as the video's first frame). Uploading your own photo here shows it instead of the built-in video (unless you also set a video above).", ratio: "aspect-[3/4]", w: "w-40" },
+  { key: "hero", label: "Homepage hero photo", hint: "Big photo at the top of the website (also the video's first frame if you add a hero video).", ratio: "aspect-[3/4]", w: "w-40" },
   { key: "story", label: "Story section", hint: "Portrait beside Tony's story on the homepage.", ratio: "aspect-[4/5]", w: "w-40" },
   { key: "private_session", label: "Private sessions banner", hint: "Main photo in the homepage private-sessions banner.", ratio: "aspect-[4/3]", w: "w-44" },
   { key: "teacher_training", label: "Teacher training banner", hint: "Photo in the homepage teacher-training banner.", ratio: "aspect-[4/3]", w: "w-44" },
@@ -42,30 +42,26 @@ function HeroVideoSlot({ value, onChange }) {
       toast.error(typeof e?.response?.data?.detail === "string" ? e.response.data.detail : "Upload failed");
     } finally { setBusy(false); }
   };
-  const src = off ? "" : contentImageUrl(value) || TONY.heroVideo;
+  const src = off ? "" : contentImageUrl(value) || "";
   return (
     <div className="rounded-3xl bg-white border border-[#E5E6DF] p-5 flex flex-col sm:flex-row gap-5" data-testid="site-image-hero_video">
       <div className="w-40 shrink-0">
         <div className="aspect-square rounded-2xl overflow-hidden bg-[#F2F2EC] border border-[#E5E6DF] relative">
-          {src ? <video key={src} src={src} muted loop autoPlay playsInline className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-[11px] text-[#6B7269] p-3 text-center">Video off — the hero photo is shown</div>}
-          {!value && <span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">Built-in</span>}
+          {src ? <video key={src} src={src} muted loop autoPlay playsInline className="h-full w-full object-cover" /> : <div className="h-full w-full flex items-center justify-center text-[11px] text-[#6B7269] p-3 text-center">No video — the hero photo is shown</div>}
         </div>
       </div>
       <div className="flex-1 min-w-0 space-y-3">
         <div>
           <div className="font-semibold text-[#1C221F]">Homepage hero video</div>
-          <div className="text-[12px] text-[#6B7269]">A short silent loop of Tony practising, shown at the top of the website. MP4 works best — keep it under 10 seconds and a few MB. Visitors who prefer reduced motion or save data see the photo instead.</div>
+          <div className="text-[12px] text-[#6B7269]">Optional. Leave empty and the website shows the <span className="font-semibold">Homepage hero</span> photo below. If you add a video (a short silent MP4, a few MB), it plays at the top of the website instead; visitors who prefer reduced motion or save data still see the photo.</div>
         </div>
-        <input type="text" value={off ? "" : value || ""} disabled={off} onChange={(e) => onChange(e.target.value)} placeholder="Built-in video — or paste an MP4 link" data-testid="site-image-url-hero_video" className={inputCls} />
+        <input type="text" value={off ? "" : value || ""} disabled={off} onChange={(e) => onChange(e.target.value)} placeholder="No video — paste an MP4 link, or upload one" data-testid="site-image-url-hero_video" className={inputCls} />
         <div className="flex flex-wrap gap-2.5">
           <input ref={fileRef} type="file" accept="video/mp4,video/webm,video/quicktime" className="hidden" onChange={(e) => { upload(e.target.files?.[0]); e.target.value = ""; }} data-testid="site-hero-video-file" />
           <button onClick={() => fileRef.current?.click()} disabled={busy || off} className="pill pill-ghost !py-2 !px-4 !text-[13px] disabled:opacity-50" data-testid="site-hero-video-upload">
             <Upload className="h-4 w-4" /> {busy ? "Uploading…" : "Upload video"}
           </button>
-          <label className="pill pill-ghost !py-2 !px-4 !text-[13px] cursor-pointer">
-            <input type="checkbox" className="mr-1 accent-[#B25A45]" checked={!off} onChange={(e) => onChange(e.target.checked ? "" : "off")} data-testid="site-hero-video-toggle" /> Play a video in the hero
-          </label>
-          {value && !off && <button onClick={() => onChange("")} className="pill pill-ghost !py-2 !px-4 !text-[13px]"><RotateCcw className="h-4 w-4" /> Use built-in video</button>}
+          {(value || off) && <button onClick={() => onChange("")} className="pill pill-ghost !py-2 !px-4 !text-[13px]" data-testid="site-hero-video-remove"><RotateCcw className="h-4 w-4" /> Remove video</button>}
         </div>
       </div>
     </div>
@@ -112,7 +108,7 @@ export default function SiteImagesPane() {
       <div>
         <div className="eyebrow mb-1">Appearance</div>
         <h2 className="serif text-2xl sm:text-3xl">Site images</h2>
-        <p className="text-[13px] text-[#6B7269] mt-1 max-w-xl">Replace the photos of Tony on the website and in the app. A slot marked <span className="font-semibold">Built-in</span> shows the photo that comes with the site — upload your own to replace it, or press “Use default” to go back. Course, product, retreat, meditation and pose pictures are changed in their own sections.</p>
+        <p className="text-[13px] text-[#6B7269] mt-1 max-w-xl">Every photo of Tony on the website and in the app comes from here. Upload a picture or paste a link, then press <span className="font-semibold">Save site images</span>. An empty slot shows nothing on the site. Course, product, retreat, meditation and pose pictures are changed in their own sections.</p>
       </div>
 
       <div className="space-y-5">
@@ -123,9 +119,7 @@ export default function SiteImagesPane() {
               <div className={`${slot.ratio} rounded-2xl overflow-hidden bg-[#F2F2EC] border border-[#E5E6DF]`}>
                 {images[slot.key]
                   ? <img src={contentImageUrl(images[slot.key])} alt={slot.label} className="h-full w-full object-cover" data-testid={`site-image-preview-${slot.key}`} />
-                  : SLOT_DEFAULTS[slot.key]
-                    ? <div className="relative h-full w-full"><img src={SLOT_DEFAULTS[slot.key]} alt="" className="h-full w-full object-cover" data-testid={`site-image-default-${slot.key}`} /><span className="absolute left-2 top-2 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-semibold text-white">Built-in</span></div>
-                    : <div className="h-full w-full flex items-center justify-center text-[#B0B4AA]"><ImageIcon className="h-7 w-7" /></div>}
+                  : <div className="h-full w-full flex flex-col items-center justify-center gap-1 text-[#B0B4AA] p-2 text-center" data-testid={`site-image-empty-${slot.key}`}><ImageIcon className="h-7 w-7" /><span className="text-[10px] font-semibold">Empty — nothing shows</span></div>}
               </div>
             </div>
             <div className="flex-1 min-w-0 space-y-3">
@@ -155,7 +149,12 @@ export default function SiteImagesPane() {
                 </button>
                 {images[slot.key] && (
                   <button onClick={() => setSlot(slot.key, "")} className="pill pill-ghost !py-2 !px-4 !text-[13px]" data-testid={`site-image-reset-${slot.key}`}>
-                    <RotateCcw className="h-4 w-4" /> Use default
+                    <RotateCcw className="h-4 w-4" /> Remove
+                  </button>
+                )}
+                {SLOT_DEFAULTS[slot.key] && images[slot.key] !== SLOT_DEFAULTS[slot.key] && (
+                  <button onClick={() => setSlot(slot.key, SLOT_DEFAULTS[slot.key])} className="pill pill-ghost !py-2 !px-4 !text-[13px]" data-testid={`site-image-builtin-${slot.key}`}>
+                    <ImageIcon className="h-4 w-4" /> Use Tony's photo from the site
                   </button>
                 )}
               </div>

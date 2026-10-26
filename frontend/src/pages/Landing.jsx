@@ -1,16 +1,16 @@
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import Logo from "@/components/Logo";
-import { TONY } from "@/lib/brandMedia";
+import FadeImg from "@/components/FadeImg";
 import { useSiteImages, siteImage } from "@/lib/siteData";
 
 export default function Landing() {
-  const heroSrc = siteImage(useSiteImages(), "app_home", TONY.portrait);
+  const heroSrc = siteImage(useSiteImages(), "app_home");
   return (
     <div className="min-h-screen bg-[#FAFAF7]" data-testid="landing-page">
       <div className="relative overflow-hidden">
-        <div className="relative h-[70vh] min-h-[520px]">
-          <img
+        <div className="relative h-[70vh] min-h-[520px] bg-[#2A302C]">
+          <FadeImg
             src={heroSrc}
             alt="Tony Sanchez"
             className="absolute inset-0 h-full w-full object-cover object-[center_22%]"

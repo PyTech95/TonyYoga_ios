@@ -1,5 +1,5 @@
 /* Tony Yoga service worker — network-first for app code + API, cache-first for media, web push handler */
-const CACHE_VERSION = "tony-yoga-v4";
+const CACHE_VERSION = "tony-yoga-v5";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const RUNTIME_CACHE = `${CACHE_VERSION}-runtime`;
 const OFFLINE_URL = "/offline.html";

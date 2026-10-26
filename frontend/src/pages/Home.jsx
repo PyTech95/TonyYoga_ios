@@ -7,7 +7,7 @@ import { useTranslation } from "react-i18next";
 import Spinner from "@/components/Spinner";
 import StreakCard from "@/components/StreakCard";
 import Logo from "@/components/Logo";
-import { TONY } from "@/lib/brandMedia";
+import FadeImg from "@/components/FadeImg";
 import { useSiteImages, siteImage } from "@/lib/siteData";
 
 function formatWhen(iso, locale) {
@@ -20,7 +20,7 @@ function formatWhen(iso, locale) {
 
 export default function HomePage() {
   const { user } = useAuth();
-  const heroSrc = siteImage(useSiteImages(), "app_home", TONY.portrait);
+  const heroSrc = siteImage(useSiteImages(), "app_home");
   const { t, i18n } = useTranslation();
   const locale = i18n.language === "es" ? "es-ES" : "en-US";
   const [classes, setClasses] = useState(null);
@@ -61,8 +61,8 @@ export default function HomePage() {
     <div data-testid="home-page" className="animate-fade-up">
       {/* Hero */}
       <div className="relative overflow-hidden">
-        <div className="relative h-[52vh] min-h-[380px]">
-          <img src={heroSrc} alt="" data-testid="home-hero-image" className="absolute inset-0 h-full w-full object-cover object-[center_22%]" />
+        <div className="relative h-[52vh] min-h-[380px] bg-[#2A302C]">
+          <FadeImg src={heroSrc} alt="" data-testid="home-hero-image" className="absolute inset-0 h-full w-full object-cover object-[center_22%]" />
           <div className="absolute inset-0 bg-gradient-to-b from-[#1C221F]/0 via-[#1C221F]/25 to-[#1C221F]/85" />
           <div className="absolute top-3 sm:top-4 left-4 sm:left-5 z-10 safe-top">
             <Logo className="h-14 w-14 sm:h-16 sm:w-16" />

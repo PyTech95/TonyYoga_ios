@@ -16,7 +16,8 @@ import { contentImageUrl } from "@/components/ContentImageInput";
 import SiteFooter from "@/components/SiteFooter";
 import { usePageSeo } from "@/lib/seo";
 import { SITE_FAQ, faqJsonLd } from "@/seo/seoData.mjs";
-import { TONY, preferStill } from "@/lib/brandMedia";
+import { preferStill } from "@/lib/brandMedia";
+import FadeImg from "@/components/FadeImg";
 import { siteImage, useCmsPages } from "@/lib/siteData";
 
 function isStandalone() {
@@ -94,32 +95,31 @@ function Nav({ onOpenApp }) {
   );
 }
 
-// Home hero: Tony's practice video (built-in, or one set in Admin → Site images),
-// otherwise a photo. "off" in the video slot always shows the photo.
-function HeroMedia({ heroImg, heroVideo }) {
+// Hero picture (or video) from Admin → Site images only. Nothing shows until the backend
+// answers, so the page never starts with one picture and switches to another.
+function HeroMedia({ ready, heroImg, heroVideo }) {
   const [still] = useState(preferStill);
-  const custom = contentImageUrl(heroImg);
-  const video = heroVideo === "off" ? "" : contentImageUrl(heroVideo) || (custom ? "" : TONY.heroVideo);
-  const poster = custom || TONY.heroPoster;
-  const showVideo = !!video && !still;
+  const poster = contentImageUrl(heroImg) || "";
+  const video = heroVideo && heroVideo !== "off" ? contentImageUrl(heroVideo) : "";
+  const showVideo = ready && !!video && !still;
   return (
-    <div className={`relative ${video ? "aspect-square" : "aspect-[3/4]"} rounded-2xl sm:rounded-3xl overflow-hidden bg-[#E9E7E1]`}>
+    <div className="relative aspect-[3/4] rounded-2xl sm:rounded-3xl overflow-hidden bg-[#E9E7E1]" data-testid="hero-media">
       {showVideo ? (
         <video
           data-cms="site_images:hero_video" data-testid="hero-video"
-          src={video} poster={poster} autoPlay muted loop playsInline preload="auto"
+          src={video} poster={poster || undefined} autoPlay muted loop playsInline preload="auto"
           aria-label="Tony Sanchez practising yoga"
           className="absolute inset-0 h-full w-full object-cover"
         />
-      ) : (
-        <img data-cms="site_images:hero" data-testid="hero-image" src={poster} alt="Tony Sanchez practising yoga" className="absolute inset-0 h-full w-full object-cover" />
-      )}
+      ) : ready ? (
+        <FadeImg data-cms="site_images:hero" data-testid="hero-image" src={poster} alt="Tony Sanchez practising yoga" className="absolute inset-0 h-full w-full object-cover" />
+      ) : null}
       <div className="absolute inset-0 grain"></div>
     </div>
   );
 }
 
-function Hero({ onOpenApp, heroImg, heroVideo }) {
+function Hero({ onOpenApp, ready, heroImg, heroVideo }) {
   const { t } = useTranslation();
   return (
     <section id="top" className="relative overflow-hidden pt-[7.5rem] sm:pt-[9.75rem] lg:pt-32">
@@ -150,7 +150,7 @@ function Hero({ onOpenApp, heroImg, heroVideo }) {
           </div>
         </div>
         <div className="relative animate-fade-up animate-delay-2 order-1 lg:order-2 max-w-md mx-auto lg:max-w-none w-full">
-          <HeroMedia heroImg={heroImg} heroVideo={heroVideo} />
+          <HeroMedia ready={ready} heroImg={heroImg} heroVideo={heroVideo} />
           <div className="hidden lg:block absolute -left-6 -bottom-6 w-52 rounded-2xl bg-[#1C221F] text-[#FAFAF7] p-5 shadow-2xl">
             <div className="eyebrow !text-[#B25A45]">{t("mkt.live_now")}</div>
             <div className="text-sm mt-1 font-semibold">{t("mkt.hero_card_title")}</div>
@@ -170,7 +170,7 @@ function Story({ img }) {
         <div className="eyebrow mb-3">{t("mkt.story_eyebrow")}</div>
         <h2 className="serif text-3xl sm:text-4xl leading-tight">{t("mkt.story_t1")}<br/>{t("mkt.story_t2")}</h2>
         <div className="mt-6 rounded-2xl overflow-hidden aspect-[4/5] bg-[#F2F2EC]">
-          <img data-cms="site_images:story" src={contentImageUrl(img) || TONY.story} alt="Tony Sanchez in a kneeling balance, palms together" className="h-full w-full object-cover" data-testid="story-image" loading="lazy" />
+          <FadeImg data-cms="site_images:story" src={contentImageUrl(img)} alt="Tony Sanchez in a kneeling balance, palms together" className="h-full w-full object-cover" data-testid="story-image" loading="lazy" />
         </div>
       </div>
       <div className="md:col-span-2 space-y-5 sm:space-y-6 text-[#545E56] leading-relaxed">
@@ -493,9 +493,9 @@ function DiscoverStrip({ images }) {
           </div>
         </div>
         <div className="hidden lg:grid grid-cols-2 gap-3">
-          {TONY.library.map((def, i) => siteImage(images, `library_${i + 1}`, def)).map((src, i) => (
-            <div key={i} className={`rounded-2xl overflow-hidden aspect-square ${i % 2 ? "translate-y-4" : ""}`}>
-              <img src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
+          {[1, 2, 3, 4].map((n) => siteImage(images, `library_${n}`)).filter(Boolean).map((src, i) => (
+            <div key={i} className={`rounded-2xl overflow-hidden aspect-square bg-white/5 ${i % 2 ? "translate-y-4" : ""}`}>
+              <FadeImg src={src} alt="" className="h-full w-full object-cover" loading="lazy" />
             </div>
           ))}
         </div>
@@ -589,10 +589,10 @@ function PrivateSessionsBanner({ img, tonyImg, price, durationMin }) {
                 </span>
               </div>
               <div className="relative aspect-[4/3]">
-                <img
+                <FadeImg
                   data-cms="site_images:private_session"
                   data-testid="home-private-image"
-                  src={contentImageUrl(img) || TONY.privateSession}
+                  src={contentImageUrl(img)}
                   alt="Tony Sanchez teaching a student one-to-one"
                   className="absolute inset-0 h-full w-full object-cover"
                   loading="lazy"
@@ -600,7 +600,7 @@ function PrivateSessionsBanner({ img, tonyImg, price, durationMin }) {
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
                 {/* participant tile: Tony */}
                 <div className="absolute bottom-3 right-3 h-20 w-16 sm:h-24 sm:w-20 rounded-lg overflow-hidden border-2 border-[#E8B04B] shadow-lg">
-                  <img data-cms="site_images:tony_portrait" src={contentImageUrl(tonyImg) || TONY.face} alt="Tony Sanchez" className="h-full w-full object-cover object-top" loading="lazy" />
+                  <FadeImg data-cms="site_images:tony_portrait" src={contentImageUrl(tonyImg)} alt="Tony Sanchez" className="h-full w-full object-cover object-top" loading="lazy" />
                   <span className="absolute bottom-0 inset-x-0 bg-black/60 text-[8px] text-center text-white py-0.5">Tony</span>
                 </div>
               </div>
@@ -645,7 +645,7 @@ function TeacherTrainingBanner({ img }) {
     <section className="mx-auto max-w-6xl px-4 sm:px-6 py-14 sm:py-20" data-testid="home-teacher-training">
       <div className="rounded-2xl sm:rounded-3xl overflow-hidden bg-[#1C221F] text-[#FAFAF7] grid md:grid-cols-2">
         <div className="relative min-h-[240px] md:min-h-full">
-          <img data-cms="site_images:teacher_training" data-testid="teacher-training-image" src={contentImageUrl(img) || TONY.group} alt="Tony Sanchez with students after class" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
+          <FadeImg data-cms="site_images:teacher_training" data-testid="teacher-training-image" src={contentImageUrl(img)} alt="Tony Sanchez with students after class" className="absolute inset-0 h-full w-full object-cover" loading="lazy" />
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-[#1C221F] via-[#1C221F]/30 to-transparent" />
         </div>
         <div className="p-6 sm:p-10 lg:p-14">
@@ -680,6 +680,7 @@ export default function Marketing() {
   usePageSeo("/", { jsonLd: HOME_LD });
   const [siteImages, setSiteImages] = useState({});
   const [pub, setPub] = useState({});
+  const [loaded, setLoaded] = useState(false);
   const openApp = () => {
     if (isStandalone()) window.location.href = "/home";
     else window.dispatchEvent(new Event('tony-open-downloads'));
@@ -688,13 +689,13 @@ export default function Marketing() {
     api.get("/settings/public").then(({ data }) => {
       setSiteImages(data?.site_images || {});
       setPub(data || {});
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setLoaded(true));
   }, []);
   return (
     <div data-testid="marketing-site" className="min-h-screen bg-[#FAFAF7]">
       <FreeClassRibbon />
       <Nav onOpenApp={openApp} />
-      <Hero onOpenApp={openApp} heroImg={siteImages.hero} heroVideo={siteImages.hero_video} />
+      <Hero onOpenApp={openApp} ready={loaded} heroImg={siteImages.hero} heroVideo={siteImages.hero_video} />
       <FeatureStrip />
       <StatsBar />
       <Story img={siteImages.story} />

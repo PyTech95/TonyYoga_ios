@@ -42,9 +42,16 @@ export function useSiteImages() {
   return useShared("site_images", "/settings/public", pickImages) || {};
 }
 
-/** Admin photo for a slot, resolved to a full URL, or the built-in fallback. */
-export function siteImage(images, slot, fallback) {
-  return contentImageUrl(images?.[slot]) || fallback;
+/** Site images plus whether they have arrived from the backend yet. */
+export function useSiteImagesState() {
+  const value = useShared("site_images", "/settings/public", pickImages);
+  return { images: value || {}, ready: value !== undefined };
+}
+
+/** Admin photo for a slot, resolved to a full URL. Pictures come from the backend only:
+ *  an empty slot shows nothing (no built-in image is swapped in). */
+export function siteImage(images, slot) {
+  return contentImageUrl(images?.[slot]) || "";
 }
 
 /** Published custom pages (About, Services, …) for menus. */

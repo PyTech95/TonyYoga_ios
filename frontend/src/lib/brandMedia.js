@@ -1,5 +1,6 @@
-// Built-in photos and video of Tony (files in public/brand/tony). Each one can be
-// replaced in Admin → Site images; these are what shows when a slot is left empty.
+// Tony's photos that ship with the site (files in public/brand/tony). The website only shows
+// what Admin → Site images (the database) says; these paths are just what the admin can pick
+// with "Use Tony's photo from the site" (the backend fills empty slots with them once).
 const B = "/brand/tony";
 
 export const TONY = {
@@ -21,7 +22,7 @@ export const TONY = {
   ],
 };
 
-/** Default photo for each Admin → Site images slot. */
+/** Photo offered for each Admin → Site images slot (same list as STARTER_SITE_IMAGES in the backend). */
 export const SLOT_DEFAULTS = {
   hero: TONY.heroPoster,
   story: TONY.story,
