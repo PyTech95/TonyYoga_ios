@@ -286,6 +286,43 @@ async def private_session_amount(qty: int) -> float:
     return round(price_each * qty, 2)
 
 
+# Tony's photos that ship with the website (frontend/public/brand/tony). They are written into
+# the database once, so every picture on the site comes from Admin → Site images.
+STARTER_SITE_IMAGES = {
+    "hero": "/brand/tony/hero-poster.jpg",
+    "story": "/brand/tony/tony-story.jpg",
+    "teacher_training": "/brand/tony/group.jpg",
+    "app_home": "/brand/tony/tony-portrait.jpg",
+    "tony_portrait": "/brand/tony/tony-face.jpg",
+    "private_session": "/brand/tony/private-session.jpg",
+    "tt_page_hero": "/brand/tony/tt-hero.jpg",
+    "tt_page_group": "/brand/tony/group-wide.jpg",
+    "library_1": "/brand/tony/pose-backbend.jpg",
+    "library_2": "/brand/tony/pose-forward-fold.jpg",
+    "library_3": "/brand/tony/pose-kneel-fold.jpg",
+    "library_4": "/brand/tony/tony-seated.jpg",
+}
+
+
+async def ensure_site_images() -> None:
+    """Run once: fill empty Site images slots with the photos above. Slots the admin already
+    set are kept; a slot emptied later stays empty. No hero video is added."""
+    doc = await db.app_settings.find_one({"_id": SETTINGS_DOC_ID}, {"_id": 0, "site_images": 1, "_site_images_seeded": 1}) or {}
+    if doc.get("_site_images_seeded"):
+        return
+    images = dict(doc.get("site_images") or {})
+    for slot, path in STARTER_SITE_IMAGES.items():
+        if not images.get(slot):
+            images[slot] = path
+    if images.get("hero_video") == "off":
+        images["hero_video"] = ""
+    await db.app_settings.update_one(
+        {"_id": SETTINGS_DOC_ID},
+        {"$set": {"site_images": images, "_site_images_seeded": now_utc().isoformat()}, "$setOnInsert": {"_id": SETTINGS_DOC_ID}},
+        upsert=True,
+    )
+
+
 async def save_settings(update: Dict[str, Any], admin: dict | None = None) -> None:
     """Persist a subset of settings (used by the per-integration Save & Verify flows).
     Only keys present in DEFAULT_SETTINGS are written."""

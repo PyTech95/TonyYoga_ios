@@ -139,6 +139,13 @@ async def on_startup():
         _seed_error = f"Seed exception: {e}"
         logger.exception(f"Seed failed (app will still start): {e}")
 
+    # Every site picture comes from the database: fill empty Site images slots once.
+    try:
+        from routers.settings import ensure_site_images
+        await ensure_site_images()
+    except Exception as e:
+        logger.error(f"Site images setup skipped: {e}")
+
     # Preserve admin toggles across restarts and encrypt legacy saved secrets.
     try:
         from routers.settings import SECRET_FIELDS
