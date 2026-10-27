@@ -67,6 +67,12 @@ function SettingsPane() {
         openai_api_key: "",
         openai_api_key_set: !!data.openai_api_key_set,
         openai_api_key_from_env: !!data.openai_api_key_from_env,
+        assistant_provider: data.assistant_provider || "auto",
+        assistant_gemini_model: data.assistant_gemini_model || "gemini-3.5-flash-lite",
+        assistant_gemini_voice: data.assistant_gemini_voice || "Kore",
+        gemini_api_key: "",
+        gemini_api_key_set: !!data.gemini_api_key_set,
+        gemini_api_key_from_env: !!data.gemini_api_key_from_env,
         social_whatsapp: data.social_whatsapp || "",
         zoom_enabled: !!data.zoom_enabled,
         zoom_account_id: data.zoom_account_id || "",
@@ -116,7 +122,7 @@ function SettingsPane() {
         else payload[k] = form[k];
       });
       // Never send blank secrets.
-      ["stripe_secret_key", "stripe_webhook_secret", "smtp_password", "paypal_client_secret", "instagram_access_token", "zoom_client_secret", "twilio_auth_token"].forEach((k) => {
+      ["stripe_secret_key", "stripe_webhook_secret", "smtp_password", "paypal_client_secret", "instagram_access_token", "zoom_client_secret", "twilio_auth_token", "openai_api_key", "gemini_api_key"].forEach((k) => {
         if (!payload[k]) delete payload[k];
       });
       if (Object.keys(payload).length === 0) { toast.info("No changes to save."); setSaving(false); return; }
@@ -477,7 +483,7 @@ function SettingsPane() {
       </div>
 
       {/* -------- AI Assistant -------- */}
-      <AssistantCard form={form} set={set} inputCls={inputCls} card={card} />
+      <AssistantCard form={form} set={set} inputCls={inputCls} card={card} clearSecret={clearSecret} />
 
       {/* -------- Audit log -------- */}
       <div className={card} data-testid="settings-audit-card">
@@ -532,13 +538,35 @@ function UsageChart({ history }) {
   );
 }
 
-function AssistantCard({ form, set, inputCls, card }) {
+function AssistantCard({ form, set, inputCls, card, clearSecret }) {
   const [leads, setLeads] = useState(null);
   const [showLeads, setShowLeads] = useState(false);
   const [usage, setUsage] = useState(null);
   useEffect(() => { api.get("/admin/assistant/leads").then(({ data }) => setLeads(data.leads)).catch(() => setLeads([])); }, []);
   useEffect(() => { api.get("/admin/assistant/usage").then(({ data }) => setUsage(data)).catch(() => setUsage(null)); }, []);
   const VOICES = ["nova", "shimmer", "alloy", "echo", "fable", "onyx"];
+  const GEMINI_VOICES = [
+    ["Kore", "Kore — firm, female"], ["Aoede", "Aoede — breezy, female"], ["Leda", "Leda — youthful, female"],
+    ["Zephyr", "Zephyr — bright, female"], ["Callirrhoe", "Callirrhoe — easy-going, female"], ["Despina", "Despina — smooth, female"],
+    ["Sulafat", "Sulafat — warm, female"], ["Vindemiatrix", "Vindemiatrix — gentle, female"], ["Achernar", "Achernar — soft, female"],
+    ["Puck", "Puck — upbeat, male"], ["Charon", "Charon — informative, male"], ["Fenrir", "Fenrir — excitable, male"],
+    ["Orus", "Orus — firm, male"], ["Iapetus", "Iapetus — clear, male"], ["Umbriel", "Umbriel — easy-going, male"],
+    ["Algieba", "Algieba — smooth, male"], ["Achird", "Achird — friendly, male"], ["Sadaltager", "Sadaltager — knowledgeable, male"],
+  ];
+  // Which AI answers right now: "auto" uses Gemini as soon as a Gemini key is saved (or typed).
+  const usesGemini = form.assistant_provider === "gemini"
+    || (form.assistant_provider !== "openai" && (form.gemini_api_key_set || !!form.gemini_api_key));
+  const [check, setCheck] = useState(null);
+  const runCheck = async () => {
+    setCheck({ busy: true });
+    try {
+      const { data } = await api.post("/admin/assistant/test", null, { timeout: 120000 });
+      setCheck(data);
+      if (data.audio_url) new Audio(`${process.env.REACT_APP_BACKEND_URL}${data.audio_url}`).play().catch(() => {});
+    } catch (e) {
+      setCheck({ error: e?.response?.data?.detail || "The test could not run. Please try again." });
+    }
+  };
   return (
     <div className={card} data-testid="settings-assistant-card">
       <div className="flex items-center justify-between">
@@ -553,11 +581,26 @@ function AssistantCard({ form, set, inputCls, card }) {
       </div>
 
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Voice" hint="The spoken voice (OpenAI text-to-speech).">
-          <select data-testid="settings-assistant-voice" className={inputCls} value={form.assistant_voice} onChange={(e) => set("assistant_voice", e.target.value)}>
-            {VOICES.map((v) => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
+        <Field label="AI provider" hint={usesGemini ? "Now answering with Google Gemini." : "Now answering with OpenAI."}>
+          <select data-testid="settings-assistant-provider" className={inputCls} value={form.assistant_provider} onChange={(e) => set("assistant_provider", e.target.value)}>
+            <option value="auto">Automatic (Gemini when its key is saved)</option>
+            <option value="gemini">Google Gemini</option>
+            <option value="openai">OpenAI</option>
           </select>
         </Field>
+        {usesGemini ? (
+          <Field label="Voice" hint="The spoken voice (Gemini text-to-speech).">
+            <select data-testid="settings-assistant-gemini-voice" className={inputCls} value={form.assistant_gemini_voice} onChange={(e) => set("assistant_gemini_voice", e.target.value)}>
+              {GEMINI_VOICES.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+            </select>
+          </Field>
+        ) : (
+          <Field label="Voice" hint="The spoken voice (OpenAI text-to-speech).">
+            <select data-testid="settings-assistant-voice" className={inputCls} value={form.assistant_voice} onChange={(e) => set("assistant_voice", e.target.value)}>
+              {VOICES.map((v) => <option key={v} value={v}>{v.charAt(0).toUpperCase() + v.slice(1)}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label="Daily cap (AI turns)" hint="Guards against surprise bills. 0 = unlimited.">
           <input data-testid="settings-assistant-limit" type="number" min="0" className={inputCls} value={form.assistant_daily_limit} onChange={(e) => set("assistant_daily_limit", e.target.value)} />
         </Field>
@@ -600,7 +643,7 @@ function AssistantCard({ form, set, inputCls, card }) {
             : <span className="text-[10px] font-semibold text-[#8A6D3B] bg-[#F3E7C9] rounded-full px-2 py-0.5" data-testid="settings-openai-status">Not configured</span>}
         </div>
         <p className="text-[11px] text-[#6B7269] leading-relaxed">
-          OpenAI powers chat and voice. Set a key here or use the server's OPENAI_API_KEY.
+          OpenAI can power chat and voice. Set a key here or use the server's OPENAI_API_KEY.
           Leave blank to keep the saved key. Stored securely on the server, never shown in full.
         </p>
         <input
@@ -613,6 +656,64 @@ function AssistantCard({ form, set, inputCls, card }) {
           autoComplete="off"
         />
         <a data-testid="settings-openai-key-link" href="https://platform.openai.com/api-keys" target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-[#B25A45] hover:opacity-70">Get an OpenAI key →</a>
+      </div>
+
+      <div className="rounded-xl bg-[#F7F2EC] border border-[#E7D9CB] p-3 space-y-2" data-testid="settings-gemini-box">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-widest font-bold text-[#B25A45]">Google Gemini API key</span>
+          {form.gemini_api_key_set
+            ? <span className="text-[10px] font-semibold text-[#3E7C57] bg-[#E4F0E8] rounded-full px-2 py-0.5" data-testid="settings-gemini-status">● Configured{form.gemini_api_key_from_env ? " (env)" : ""}</span>
+            : <span className="text-[10px] font-semibold text-[#8A6D3B] bg-[#F3E7C9] rounded-full px-2 py-0.5" data-testid="settings-gemini-status">Not configured</span>}
+        </div>
+        <p className="text-[11px] text-[#6B7269] leading-relaxed">
+          Gemini can power chat and voice instead of OpenAI. Paste a key from Google AI Studio and press Save —
+          with the provider on Automatic it is used straight away. Leave blank to keep the saved key. Stored securely on the server, never shown in full.
+        </p>
+        <input
+          data-testid="settings-gemini-key"
+          type="password"
+          className={inputCls}
+          value={form.gemini_api_key}
+          onChange={(e) => set("gemini_api_key", e.target.value)}
+          placeholder={form.gemini_api_key_set ? "••••••••  (leave blank to keep current)" : "AIza..."}
+          autoComplete="off"
+        />
+        <Field label="Gemini model">
+          <select data-testid="settings-gemini-model" className={inputCls} value={form.assistant_gemini_model} onChange={(e) => set("assistant_gemini_model", e.target.value)}>
+            <option value="gemini-3.5-flash-lite">Gemini 3.5 Flash-Lite — fastest, lowest cost</option>
+            <option value="gemini-3.8-flash">Gemini 3.8 Flash — smarter, a little slower</option>
+          </select>
+        </Field>
+        <div className="flex flex-wrap items-center gap-3">
+          <a data-testid="settings-gemini-key-link" href="https://aistudio.google.com/apikey" target="_blank" rel="noopener noreferrer" className="text-[11px] font-semibold text-[#B25A45] hover:opacity-70">Get a Gemini key →</a>
+          {form.gemini_api_key_set && !form.gemini_api_key_from_env && (
+            <button type="button" onClick={() => clearSecret("gemini_api_key")} className="text-[11px] font-semibold text-[#6B7269] hover:text-[#B25A45]" data-testid="settings-gemini-clear">Remove saved key</button>
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-white border border-[#E7D9CB] p-3 space-y-2" data-testid="settings-assistant-check">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-[11px] text-[#6B7269]">Save first, then check that the saved key answers and speaks.</span>
+          <button type="button" onClick={runCheck} disabled={check?.busy} data-testid="settings-assistant-test" className="pill pill-ghost !py-1.5 !px-3 !text-xs">
+            {check?.busy ? <><span className="h-3.5 w-3.5 rounded-full border-2 border-[#E5E6DF] border-t-[#B25A45] animate-spin inline-block" /> Testing…</> : <><Mic className="h-3.5 w-3.5" /> Test the assistant</>}
+          </button>
+        </div>
+        {check && !check.busy && (
+          <div className="text-[12px] leading-relaxed" data-testid="settings-assistant-test-result">
+            {check.chat_ok ? (
+              <>
+                <p className="font-semibold text-[#3E7C57]">✓ {check.provider === "gemini" ? "Gemini" : "OpenAI"} is answering{check.model ? ` (${check.model})` : ""}.</p>
+                <p className="text-[#1C221F] italic">“{check.reply}”</p>
+                {check.voice_ok
+                  ? <p className="text-[#3E7C57]">✓ Voice works — you should hear a short greeting.</p>
+                  : <p className="text-[#8A6D3B]">Voice: {check.voice_error || "not available"}</p>}
+              </>
+            ) : (
+              <p className="font-semibold text-[#B25A45]">✗ {check.error || "The assistant did not answer."}</p>
+            )}
+          </div>
+        )}
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setShowLeads((v) => !v)} data-testid="settings-assistant-leads-toggle" className="pill pill-ghost !py-1.5 !px-3 !text-xs">

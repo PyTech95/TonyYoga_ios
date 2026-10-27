@@ -12,7 +12,7 @@ from pydantic import BaseModel, EmailStr, Field
 from core import api, db, gen_id, now_utc, logger, require_role, get_optional_user
 from routers.settings import get_setting
 from assistant_engine import reply_stream, request_guard, check_limits
-from assistant_audio import speech, transcribe
+from assistant_audio import speech, transcribe, audio_mime
 
 
 class ChatIn(BaseModel):
@@ -95,21 +95,21 @@ async def assistant_chat_stream(payload: ChatIn, user: Optional[dict] = Depends(
 async def assistant_tts(payload: TTSIn):
     if not payload.text.strip():
         raise HTTPException(400, 'Speech text cannot be empty.')
-    return {'audio_url': await speech(payload.text, payload.voice), 'mime': 'audio/mpeg'}
+    return {'audio_url': await speech(payload.text, payload.voice), 'mime': await audio_mime()}
 
 
 @api.get('/assistant/greeting', dependencies=[Depends(request_guard)])
 async def assistant_greeting():
     text = await get_setting('assistant_greeting')
-    return {'text': text, 'audio_url': await speech(text), 'mime': 'audio/mpeg'}
+    return {'text': text, 'audio_url': await speech(text), 'mime': await audio_mime()}
 
 
 @api.get('/assistant/audio/{audio_id}')
 async def assistant_audio(audio_id: UUID):
-    doc = await db.assistant_audio.find_one({'id': str(audio_id), 'expires_at': {'$gt': now_utc()}}, {'_id': 0, 'audio': 1})
+    doc = await db.assistant_audio.find_one({'id': str(audio_id), 'expires_at': {'$gt': now_utc()}}, {'_id': 0, 'audio': 1, 'mime': 1})
     if not doc:
         raise HTTPException(404, 'This audio has expired. Please start voice again.')
-    return Response(bytes(doc['audio']), media_type='audio/mpeg', headers={'Cache-Control': 'private, max-age=3600'})
+    return Response(bytes(doc['audio']), media_type=doc.get('mime') or 'audio/mpeg', headers={'Cache-Control': 'private, max-age=3600'})
 
 
 @api.post('/assistant/voice', response_model=ReplyOut, dependencies=[Depends(request_guard)])
@@ -140,6 +140,51 @@ async def admin_assistant_usage(request: Request):
             'limit': int(await get_setting('assistant_daily_limit') or 0),
             'session_limit': int(await get_setting('assistant_session_limit') or 0),
             'history': [{'date': d, 'count': counts.get(d, 0)} for d in days]}
+
+
+@api.post('/admin/assistant/test')
+async def admin_assistant_test(request: Request):
+    """Admin → Settings "Test the assistant": one short answer and one spoken line with the saved key."""
+    await require_role(request, ['admin'])
+    from assistant_audio import provider, openai_key
+    import assistant_gemini as gemini
+    ai = await provider()
+    out = {'provider': ai, 'chat_ok': False, 'voice_ok': False}
+    question = [{'role': 'user', 'content': 'Say hello to a yoga student in one short sentence.'}]
+    system = "You are Tony Yoga's friendly assistant. Answer in one short sentence."
+    try:
+        reply = ''
+        async with asyncio.timeout(60):
+            if ai == 'gemini':
+                out['model'] = await get_setting('assistant_gemini_model') or gemini.DEFAULT_MODEL
+                async for text in gemini.stream_chat(system, question, out['model']):
+                    reply += text
+            else:
+                from openai import AsyncOpenAI
+                out['model'] = await get_setting('assistant_openai_model')
+                async with AsyncOpenAI(api_key=await openai_key(), timeout=50.0, max_retries=0) as client:
+                    res = await client.chat.completions.create(
+                        model=out['model'], messages=[{'role': 'system', 'content': system}, *question],
+                        max_completion_tokens=120)
+                    reply = res.choices[0].message.content or ''
+        if not reply.strip():
+            raise HTTPException(502, 'The AI returned an empty answer.')
+        out.update(chat_ok=True, reply=reply.strip()[:300])
+    except HTTPException as exc:
+        out['error'] = exc.detail
+        return out
+    except Exception as exc:
+        logger.warning('Assistant test failed (%s)', type(exc).__name__)
+        out['error'] = ('The OpenAI API key was rejected. Check it in Admin → Settings.'
+                        if type(exc).__name__ == 'AuthenticationError'
+                        else 'The AI service could not be reached. Check the API key and try again.')
+        return out
+    try:
+        out['audio_url'] = await speech('Namaste! Your assistant is ready.')
+        out.update(voice_ok=True, mime=await audio_mime())
+    except HTTPException as exc:
+        out['voice_error'] = exc.detail
+    return out
 
 
 @api.post('/assistant/lead')

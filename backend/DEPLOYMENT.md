@@ -32,6 +32,7 @@ Keep secrets in environment variables or a non-committed `backend/.env`:
 | `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Existing idempotent seed credentials |
 | `CORS_ORIGINS` | Comma-separated allowed frontend origins |
 | `OPENAI_API_KEY` | Optional direct OpenAI project API key |
+| `GEMINI_API_KEY` | Optional Google Gemini API key (Google AI Studio) |
 
 The frontend still uses `REACT_APP_BACKEND_URL`. Never put provider secrets in
 frontend variables. Existing payment/Zoom/email variables are unchanged.
@@ -48,6 +49,20 @@ Admin → Settings or supplied as `OPENAI_API_KEY` to the backend process.
 - Keyless chat/voice/TTS/greeting: HTTP 503 with a clear `detail` message.
 - Keyless streaming chat: HTTP 200 SSE with `type: error` and `message`, matching
   the existing frontend's streaming error contract.
+
+### Google Gemini (optional)
+
+Admin → Settings → AI Assistant has a **Google Gemini API key** box and an **AI provider**
+choice (`assistant_provider`: `auto` | `gemini` | `openai`). On `auto` (the default), Gemini
+answers as soon as a Gemini key is saved; otherwise OpenAI. The encrypted Admin
+`gemini_api_key` takes precedence over `GEMINI_API_KEY`. Gemini is called over plain HTTPS
+(`assistant_gemini.py`, no extra package).
+
+- Chat and voice transcription: `assistant_gemini_model` (default `gemini-3.5-flash-lite`).
+- Speech: `assistant_gemini_tts_model` (default `gemini-3.8-flash-lite-tts`), voice
+  `assistant_gemini_voice` (default `Kore`); audio is served as `audio/wav`.
+- Admin → Settings → **Test the assistant** (`POST /api/admin/assistant/test`, admin only)
+  checks the saved key with one short answer and one spoken line.
 - Disabled/rate-limited requests still return their existing 403/429 first.
 - `/api/assistant/config`, leads, cached-audio retrieval, health and non-AI routes
   do not need an OpenAI key. Normal provider errors are sanitized; no secret or
