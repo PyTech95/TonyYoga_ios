@@ -9,8 +9,17 @@ from fastapi import HTTPException
 from openai import AsyncOpenAI
 from core import db, gen_id, now_utc, logger
 from routers.settings import get_setting
+import assistant_gemini as gemini
 
 VOICES = {'alloy', 'ash', 'coral', 'echo', 'fable', 'nova', 'onyx', 'sage', 'shimmer'}
+
+
+async def provider():
+    """'gemini' or 'openai' — Admin → Settings → AI provider ('auto' = Gemini when its key is set)."""
+    choice = (await get_setting('assistant_provider') or 'auto').strip().lower()
+    if choice in ('openai', 'gemini'):
+        return choice
+    return 'gemini' if (await get_setting('gemini_api_key') or '').strip() else 'openai'
 
 
 async def openai_key():
@@ -18,16 +27,22 @@ async def openai_key():
     # Resolve on feature use, never on import or application startup.
     key = (await get_setting('openai_api_key') or '').strip()
     if not key:
-        raise HTTPException(503, 'The assistant is not configured. An OpenAI API key is required.')
+        raise HTTPException(503, 'The assistant is not configured. Add an OpenAI or Gemini API key in Admin → Settings.')
     return key
 
 
+async def audio_mime():
+    return 'audio/wav' if await provider() == 'gemini' else 'audio/mpeg'
+
+
 async def speech(text, voice=None):
+    text = re.sub(r'https?://\S+|[*_#`~]', '', text).strip()[:2000]
+    if await provider() == 'gemini':
+        return await _gemini_speech(text, voice)
     voice = voice or await get_setting('assistant_voice') or 'nova'
     if voice not in VOICES:
         raise HTTPException(422, 'Unsupported voice.')
     key = await openai_key()
-    text = re.sub(r'https?://\S+|[*_#`~]', '', text).strip()[:2000]
     cache_key = hashlib.sha256(f'{text}|{voice}|tts-1|1.0|mp3'.encode()).hexdigest()
     cached = await db.assistant_audio.find_one({'cache_key': cache_key, 'expires_at': {'$gt': now_utc()}}, {'_id': 0, 'id': 1})
     if cached:
@@ -45,10 +60,35 @@ async def speech(text, voice=None):
         raise HTTPException(502, 'Voice playback is unavailable. You can still read and type messages.')
     if not audio:
         raise HTTPException(502, 'Voice playback is unavailable. Please try again.')
+    return await _store_audio(cache_key, audio, 'audio/mpeg')
+
+
+async def _store_audio(cache_key, audio, mime):
     audio_id = gen_id()
-    await db.assistant_audio.insert_one({'id': audio_id, 'cache_key': cache_key, 'audio': audio,
+    await db.assistant_audio.insert_one({'id': audio_id, 'cache_key': cache_key, 'audio': audio, 'mime': mime,
                                          'expires_at': now_utc() + timedelta(hours=24)})
     return '/api/assistant/audio/' + audio_id
+
+
+async def _gemini_speech(text, voice=None):
+    if voice not in gemini.GEMINI_VOICES:
+        voice = await get_setting('assistant_gemini_voice') or gemini.DEFAULT_VOICE
+    if voice not in gemini.GEMINI_VOICES:
+        voice = gemini.DEFAULT_VOICE
+    model = await get_setting('assistant_gemini_tts_model') or gemini.DEFAULT_TTS_MODEL
+    cache_key = hashlib.sha256(f'{text}|{voice}|{model}|wav'.encode()).hexdigest()
+    cached = await db.assistant_audio.find_one({'cache_key': cache_key, 'expires_at': {'$gt': now_utc()}}, {'_id': 0, 'id': 1})
+    if cached:
+        return '/api/assistant/audio/' + cached['id']
+    try:
+        async with asyncio.timeout(50):
+            audio = await gemini.speak(text, voice, model)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.warning('Assistant speech (Gemini) failed (%s)', type(exc).__name__)
+        raise HTTPException(502, 'Voice playback is unavailable. You can still read and type messages.')
+    return await _store_audio(cache_key, audio, 'audio/wav')
 
 
 async def transcribe(upload):
@@ -62,6 +102,19 @@ async def transcribe(upload):
         raise HTTPException(400, 'Empty recording. Please try speaking again.')
     if len(raw) > 6 * 1024 * 1024:
         raise HTTPException(413, 'Recording is too large. Please keep it under 30 seconds.')
+    if await provider() == 'gemini':
+        try:
+            model = await get_setting('assistant_gemini_model') or gemini.DEFAULT_MODEL
+            async with asyncio.timeout(45):
+                text = await gemini.transcribe(raw, extension, model)
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.warning('Assistant transcription (Gemini) failed (%s)', type(exc).__name__)
+            raise HTTPException(502, 'I could not understand that recording. Please try again or type your question.')
+        if not text:
+            raise HTTPException(400, 'No speech detected. Please try again.')
+        return text[:2000]
     recording = io.BytesIO(raw)
     recording.name = 'voice' + extension
     try:

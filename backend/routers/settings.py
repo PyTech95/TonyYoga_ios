@@ -29,6 +29,7 @@ SECRET_FIELDS = {
     "zoom_client_secret",
     "twilio_auth_token",
     "openai_api_key",
+    "gemini_api_key",
     "printful_token",
 }
 
@@ -59,6 +60,7 @@ ENV_FALLBACK = {
     "twilio_auth_token": "TWILIO_AUTH_TOKEN",
     "twilio_whatsapp_from": "TWILIO_WHATSAPP_FROM",
     "openai_api_key": "OPENAI_API_KEY",
+    "gemini_api_key": "GEMINI_API_KEY",
     "printful_token": "PRINTFUL_TOKEN",
 }
 
@@ -178,6 +180,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "openai_api_key": "",
     "assistant_openai_model": "gpt-5.4-mini",
     "assistant_voice": "nova",            # OpenAI TTS voice: alloy|echo|fable|onyx|nova|shimmer
+    # Which AI runs chat + voice: "auto" = Gemini when a Gemini key is set, otherwise OpenAI.
+    "assistant_provider": "auto",         # auto | openai | gemini
+    "gemini_api_key": "",                 # Google AI Studio key; an empty DB key uses GEMINI_API_KEY
+    "assistant_gemini_model": "gemini-3.5-flash-lite",
+    "assistant_gemini_tts_model": "gemini-3.8-flash-lite-tts",
+    "assistant_gemini_voice": "Kore",     # Gemini prebuilt voice (Kore, Aoede, Leda, Puck, Charon…)
     "assistant_daily_limit": 300,         # max AI turns/day (0 = unlimited) — guards against runaway OpenAI spend
     "assistant_session_limit": 25,        # max AI turns per visitor session (0 = unlimited)
     # New-lead WhatsApp alert to the owner (requires WhatsApp/Twilio configured below).
@@ -441,6 +449,17 @@ async def admin_patch_settings(payload: Dict[str, Any], request: Request):
         v = payload.get(k)
         if isinstance(v, str) and v and v != "__clear__" and not _is_masked(v) and not v.startswith(pfx):
             raise HTTPException(400, f"{k} must start with '{pfx}'")
+    if "assistant_provider" in payload and payload["assistant_provider"] not in ("auto", "openai", "gemini"):
+        raise HTTPException(422, "AI provider must be Automatic, OpenAI or Gemini.")
+    for k in ("assistant_gemini_model", "assistant_gemini_tts_model"):
+        v = payload.get(k)
+        if v is not None and not (isinstance(v, str) and len(v) <= 60 and v.startswith("gemini-")
+                                  and all(c.isalnum() or c in ".-" for c in v)):
+            raise HTTPException(422, "Use a Gemini model name such as gemini-3.5-flash-lite.")
+    if "assistant_gemini_voice" in payload:
+        from assistant_gemini import GEMINI_VOICES
+        if payload["assistant_gemini_voice"] not in GEMINI_VOICES:
+            raise HTTPException(422, "Unsupported Gemini voice.")
     update: Dict[str, Any] = {}
     for k, v in payload.items():
         if k not in DEFAULT_SETTINGS:

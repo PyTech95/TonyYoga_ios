@@ -9,7 +9,8 @@ from anyio import CancelScope
 from openai import AsyncOpenAI
 from core import db, gen_id, now_utc, logger
 from routers.settings import get_setting
-from assistant_audio import openai_key
+from assistant_audio import openai_key, provider
+import assistant_gemini as gemini
 from assistant_knowledge import catalog, context_text, reply_links
 
 _indexes_ready = False
@@ -58,7 +59,8 @@ async def check_limits(sid):
 async def reply_stream(sid, message, user=None):
     sid = sid or gen_id()
     await check_limits(sid)
-    key = await openai_key()
+    ai = await provider()
+    key = await (gemini.gemini_key() if ai == 'gemini' else openai_key())
     now = now_utc()
     try:
         await db.chatbot_sessions.update_one({'id': sid}, {'$setOnInsert': {
@@ -80,18 +82,25 @@ async def reply_stream(sid, message, user=None):
         messages.extend({'role': 'assistant' if m['role'] == 'assistant' else 'user', 'content': m['text']}
                         for m in session.get('messages', [])[-16:])
         messages.append({'role': 'user', 'content': message})
-        model = await get_setting('assistant_openai_model')
         reply = ''
-        async with asyncio.timeout(65):
-            async with AsyncOpenAI(api_key=key, timeout=60.0, max_retries=1) as client:
-                stream = await client.chat.completions.create(
-                    model=model, messages=messages, max_completion_tokens=450, stream=True)
-                async with stream:
-                    async for chunk in stream:
-                        text = chunk.choices[0].delta.content if chunk.choices else None
-                        if text:
-                            reply += text
-                            yield {'type': 'delta', 'text': text, 'session_id': sid}
+        if ai == 'gemini':
+            model = await get_setting('assistant_gemini_model') or gemini.DEFAULT_MODEL
+            async with asyncio.timeout(65):
+                async for text in gemini.stream_chat(messages[0]['content'], messages[1:], model):
+                    reply += text
+                    yield {'type': 'delta', 'text': text, 'session_id': sid}
+        else:
+            model = await get_setting('assistant_openai_model')
+            async with asyncio.timeout(65):
+                async with AsyncOpenAI(api_key=key, timeout=60.0, max_retries=1) as client:
+                    stream = await client.chat.completions.create(
+                        model=model, messages=messages, max_completion_tokens=450, stream=True)
+                    async with stream:
+                        async for chunk in stream:
+                            text = chunk.choices[0].delta.content if chunk.choices else None
+                            if text:
+                                reply += text
+                                yield {'type': 'delta', 'text': text, 'session_id': sid}
         if not reply.strip():
             raise HTTPException(502, 'I could not generate an answer. Please try again.')
         links = reply_links(reply, knowledge)
