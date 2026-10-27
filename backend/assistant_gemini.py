@@ -63,28 +63,76 @@ def _thinking(model):
     return None
 
 
+class GeminiError(HTTPException):
+    """An HTTPException that also carries Google's own reason (never the key), shown to admins only."""
+
+    def __init__(self, status_code, detail, google=""):
+        super().__init__(status_code, detail)
+        self.google = google
+
+
+def _error_info(data, fallback=""):
+    """(message, reasons) from a Gemini error body: generateContent and Interactions formats."""
+    try:
+        if isinstance(data, list) and data:
+            data = data[0]
+        err = data.get("error") if isinstance(data, dict) else None
+        err = err if isinstance(err, dict) else {}
+        reasons = [str(err.get(k)) for k in ("status", "code") if isinstance(err.get(k), str)]
+        for item in err.get("details") or []:
+            if isinstance(item, dict) and item.get("reason"):
+                reasons.append(str(item["reason"]))
+        return str(err.get("message") or fallback)[:400], " ".join(reasons)[:200]
+    except Exception:
+        return str(fallback)[:400], ""
+
+
 def _error_text(resp):
     try:
         data = resp.json()
-        err = data[0].get("error") if isinstance(data, list) and data else data.get("error")
-        return str((err or {}).get("message") or resp.text)[:400]
     except Exception:
-        return (resp.text or "")[:400]
+        data = None
+    message, reasons = _error_info(data, resp.text or "")
+    return f"{message} {reasons}".strip()
+
+
+# Google's reason → what the admin should do. First match wins.
+_KEY_PROBLEMS = [
+    (("leaked",), "Google blocked this Gemini key because it was reported as leaked. Create a new key in Google AI Studio and paste it in Admin → Settings."),
+    (("api_key_invalid", "api key not valid", "api key expired", "invalid api key", "api key is invalid"),
+     "Google says this Gemini API key is not valid. Copy the whole key again from Google AI Studio (aistudio.google.com/apikey) and paste it in Admin → Settings."),
+    (("referer", "referrer", "ip address", "api_key_ip", "api_key_android", "api_key_ios", "api_key_service_blocked", "are blocked"),
+     "This key has restrictions that block the website's server. In Google Cloud → APIs & Services → Credentials, set the key's application restrictions to None (or add the server IP) and allow the Generative Language API — or create a fresh key in Google AI Studio."),
+    (("service_disabled", "has not been used in project", "it is disabled", "generative language api has not"),
+     "The Gemini (Generative Language) API is not turned on for this key's Google Cloud project. Easiest fix: create the key in Google AI Studio (aistudio.google.com/apikey)."),
+    (("prepay", "credits", "payment_required", "payment needed", "outstanding balance", "billing"),
+     "Google needs billing for this key's project (credits used up, unpaid balance or billing not set up). Check Billing in Google AI Studio."),
+    (("free tier", "denied access", "restricted", "permission_denied", "permission denied", "suspended"),
+     "Google refused access for this key's project (free tier not available for it, billing needed, or the project is restricted). Open Google AI Studio → API keys / Billing for that project, or use a key from another project."),
+]
 
 
 def _fail(resp, what):
     message = _error_text(resp)
-    logger.warning("Gemini %s failed: HTTP %s %s", what, resp.status_code, message[:200])
+    logger.warning("Gemini %s failed: HTTP %s %s", what, resp.status_code, message[:300])
+    raise _classify(resp.status_code, message)
+
+
+def _classify(status, message):
     low = message.lower()
-    if resp.status_code in (401, 403) or "api key" in low or "api_key" in low:
-        raise HTTPException(502, "The Gemini API key was rejected. Check it in Admin → Settings.")
-    if resp.status_code == 429:
-        raise HTTPException(429, "The AI service is busy right now. Please try again in a minute.")
-    if resp.status_code == 404 or "not found" in low or "not supported" in low:
-        raise HTTPException(502, "This Gemini model isn't available for your key. Pick another model in Admin → Settings.")
+    google = re.sub(r"AIza[0-9A-Za-z_\-]{8,}", "AIza…", f"HTTP {status}: {message}")[:500]
+    for words, text in _KEY_PROBLEMS:
+        if any(w in low for w in words):
+            return GeminiError(502, text, google)
     if "location" in low and "not supported" in low:
-        raise HTTPException(502, "Gemini isn't available from the server's region.")
-    raise HTTPException(502, "I'm having trouble answering right now. Please try again in a moment.")
+        return GeminiError(502, "Google doesn't offer the Gemini API from the server's country/region.", google)
+    if status == 429 or "resource_exhausted" in low or "quota" in low:
+        return GeminiError(429, "The AI service is busy or the Gemini quota is used up. Please try again in a minute.", google)
+    if status == 404 or "not found" in low or "model_not_found" in low:
+        return GeminiError(502, "This Gemini model isn't available for your key. Pick another model in Admin → Settings.", google)
+    if status in (401, 403) or "api key" in low or "api_key" in low or "authentication" in low:
+        return GeminiError(502, "The Gemini API key was rejected. Check it in Admin → Settings.", google)
+    return GeminiError(502, "I'm having trouble answering right now. Please try again in a moment.", google)
 
 
 def _thinking_rejected(resp):
@@ -133,8 +181,11 @@ async def stream_chat(system, history, model):
                     except ValueError:
                         continue
                     if chunk.get("error"):
-                        logger.warning("Gemini chat stream error: %s", str(chunk["error"].get("message", ""))[:200])
-                        raise HTTPException(502, "I'm having trouble answering right now. Please try again in a moment.")
+                        message, reasons = _error_info(chunk)
+                        logger.warning("Gemini chat stream error: %s %s", message[:200], reasons)
+                        err = chunk["error"] if isinstance(chunk["error"], dict) else {}
+                        raise _classify(err.get("code") if isinstance(err.get("code"), int) else 200,
+                                        f"{message} {reasons}".strip())
                     text = _texts(chunk)
                     if text:
                         yield text
