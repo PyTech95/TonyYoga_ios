@@ -129,3 +129,37 @@ files before validating the copy. Legacy external files are not silently proxied
   shipping updates).
 - New Python packages: `h2`, `hpack`, `hyperframe` (Apple push over HTTP/2) and `openpyxl`, `et_xmlfile`
   (Excel import). `deploy/server-deploy.sh` installs them because requirements.txt changed.
+
+## Platform 2.0 (Nov 2026): self-service, class manager, LMS, hotels, teachers
+
+New Python package: `qrcode==8.2` (in requirements.txt; pure Python). No new environment
+variables are required. Optional: `PUBLIC_API_URL` (e.g. `https://tonyoga.com`) if the API is
+served from a different host than `FRONTEND_URL`; it is used for the students' calendar-feed links.
+
+New collections are created automatically (indexes at startup): practice_plans, membership_gifts,
+withdrawals, stay_offers, hotel_partners, hotel_packages, hotel_addons, hotel_stays, hotel_guests,
+hotel_blackouts, teachers, teacher_offerings, teacher_enrollments, teacher_students,
+teacher_credits, teacher_messages, teacher_ce_log, teacher_fee_payments, lesson_completions,
+quiz_attempts, lesson_notes, lesson_questions, class_messages.
+
+Everything new is switched off or safe by default and is configured in Admin:
+- Settings → Member care: pause (on, max 3 months), stay offer (0% = off), failed-card grace
+  (7 days), gift memberships (on), monthly theme.
+- Hotels & resorts: programme switched OFF until enabled; the two proposal programmes are
+  seeded as inactive drafts with draft prices for Tony to confirm.
+- Teacher Hub: switched OFF until enabled; tiers Basic €39 / Pro €89 / Studio €149 are editable.
+- Class manager, Learning (LMS), the student pages (My plan, My classes, My learning,
+  Payments & receipts) and the admin inbox work immediately.
+
+Stripe (only if card payments are used):
+- Webhook events to send: checkout.session.completed, checkout.session.async_payment_succeeded,
+  customer.subscription.created/updated/deleted, invoice.paid, invoice.payment_succeeded,
+  invoice.payment_failed.
+- Customer portal (card updates): enable it once in the Stripe dashboard → Settings → Billing →
+  Customer portal.
+- Teacher payouts use Stripe Connect Express: enable Connect in the Stripe dashboard before
+  switching the Teacher Hub on.
+
+Security notes: a password change (by the member or the admin) signs out that account's other
+sessions; refunds are processed once even on double clicks; refunded payments are never
+delivered again by the automatic payment re-check.

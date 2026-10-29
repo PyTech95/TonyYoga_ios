@@ -95,7 +95,7 @@ def create_access_token(user_id: str, email: str, role: str, remember: Optional[
     days = 30 if remember else (1 if remember is False else 7)
     payload = {
         "sub": user_id, "email": email, "role": role, "type": "access",
-        "exp": now_utc() + timedelta(days=days),
+        "exp": now_utc() + timedelta(days=days), "iat": int(now_utc().timestamp()),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
@@ -105,14 +105,7 @@ def decode_token(token: str) -> dict:
 
 
 # ---------------- Auth deps ----------------
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    if not token:
-        raise HTTPException(401, "Not authenticated")
+async def _user_for_token(token: str, request: Request) -> dict:
     try:
         payload = decode_token(token)
     except jwt.ExpiredSignatureError:
@@ -122,11 +115,42 @@ async def get_current_user(request: Request) -> dict:
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(401, "User not found")
+    changed = user.get("password_changed_at")
+    if changed:
+        try:
+            changed_ts = int(datetime.fromisoformat(str(changed).replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            changed_ts = 0
+        if int(payload.get("iat") or 0) < changed_ts:
+            raise HTTPException(401, "Your password was changed. Please sign in again.")
     if user.get("active") is False:
         recovery_paths = {"/api/auth/me", "/api/auth/logout", "/api/me/account/status", "/api/me/account/cancel-deletion"}
         if not user.get("deletion_scheduled_at") or request.url.path not in recovery_paths:
             raise HTTPException(403, "Account is inactive or pending deletion.")
     return user
+
+
+async def get_current_user(request: Request) -> dict:
+    """The signed-in user from the session cookie or the Bearer token (an old cookie never
+    hides a valid Bearer token, e.g. after a password change in the app)."""
+    tokens = []
+    cookie = request.cookies.get("access_token")
+    if cookie:
+        tokens.append(cookie)
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer ") and auth[7:] and auth[7:] not in tokens:
+        tokens.append(auth[7:])
+    if not tokens:
+        raise HTTPException(401, "Not authenticated")
+    last = None
+    for token in tokens:
+        try:
+            return await _user_for_token(token, request)
+        except HTTPException as exc:
+            if exc.status_code == 403:
+                raise
+            last = exc
+    raise last
 
 
 async def get_optional_user(request: Request) -> Optional[dict]:

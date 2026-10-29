@@ -1,13 +1,30 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, Link, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, ArrowLeft, Sparkles, Compass, Check, RotateCcw, Mail } from "lucide-react";
+import { ArrowRight, ArrowLeft, Sparkles, Compass, Check, RotateCcw, Mail, Map as MapIcon } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { publicOrigin } from "@/lib/platform";
 import { HeaderTools, useShellHeader } from "@/components/HeaderTools";
 import { t } from "@/lib/i18n";
 import { useAuth } from "@/lib/auth";
+import { loginPath } from "@/lib/authRouting";
+import { localToday } from "@/components/TodayCard";
+
+const PLAN_KEY = "ty_plan_answers";
+
+/** Quiz answers → the personal-plan request (POST /me/plan). */
+function planRequest(a) {
+  return {
+    goal: a.goal || null,
+    level: a.level || "beginner",
+    days_per_week: Number(a.days_per_week) || 3,
+    minutes: Number(a.minutes) || 30,
+    focus: a.focus || null,
+    weeks: 4,
+    today: localToday(),
+  };
+}
 
 const STEPS = [
   {
@@ -69,7 +86,10 @@ const STEPS = [
 
 export default function FindYourPath() {
   const nav = useNavigate();
-  const { user } = useAuth();
+  const { user, ready } = useAuth();
+  const [params] = useSearchParams();
+  const [planBusy, setPlanBusy] = useState(false);
+  const resumed = useRef(false);
   const [step, setStep] = useState(0);
   const [answers, setAnswers] = useState({});
   const [result, setResult] = useState(null);
@@ -94,6 +114,36 @@ export default function FindYourPath() {
       toast.error(err?.response?.data?.detail || "Couldn't send — please try again.");
     } finally { setEmailBusy(false); }
   };
+
+  const createPlan = async (a) => {
+    if (planBusy) return;
+    if (!user) {
+      try { sessionStorage.setItem(PLAN_KEY, JSON.stringify(a)); } catch { /* private mode */ }
+      nav(loginPath("/find-your-path?resume=1", "register"));
+      return;
+    }
+    setPlanBusy(true);
+    try {
+      await api.post("/me/plan", planRequest(a));
+      try { sessionStorage.removeItem(PLAN_KEY); } catch { /* noop */ }
+      toast.success("Your 4-week plan is ready.");
+      nav("/my-plan");
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || "Couldn't create your plan — please try again.");
+      setPlanBusy(false);
+    }
+  };
+
+  // Back from sign-up / sign-in: build the plan from the saved answers.
+  useEffect(() => {
+    if (resumed.current || !ready || !user || params.get("resume") !== "1") return;
+    let saved = null;
+    try { saved = JSON.parse(sessionStorage.getItem(PLAN_KEY) || "null"); } catch { saved = null; }
+    if (!saved) return;
+    resumed.current = true;
+    createPlan(saved);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ready, user, params]);
 
   const current = STEPS[step];
   const progress = result ? 100 : Math.round((step / STEPS.length) * 100);
@@ -135,7 +185,7 @@ export default function FindYourPath() {
       </div>
 
       <div className="mx-auto max-w-2xl px-5 py-8">
-        {!result && (
+        {!result && !planBusy && (
           <AnimatePresence mode="wait">
             <motion.div
               key={step}
@@ -181,6 +231,13 @@ export default function FindYourPath() {
           </AnimatePresence>
         )}
 
+        {planBusy && !result && (
+          <div className="text-center py-16" data-testid="quiz-plan-creating">
+            <MapIcon className="h-8 w-8 text-[#B25A45] mx-auto animate-pulse" />
+            <p className="text-sm text-[#6B7269] mt-3">Creating your 4-week plan…</p>
+          </div>
+        )}
+
         {loading && (
           <div className="text-center py-16" data-testid="quiz-loading">
             <Sparkles className="h-8 w-8 text-[#B25A45] mx-auto animate-pulse" />
@@ -196,6 +253,15 @@ export default function FindYourPath() {
           >
             <div className="eyebrow flex items-center gap-2"><Sparkles className="h-3.5 w-3.5 text-[#B25A45]" /> Your recommendation</div>
             <h1 className="serif text-3xl sm:text-4xl mt-2 leading-tight">Here's where to begin.</h1>
+
+            <div className="mt-6 rounded-3xl bg-[#FBF1EE] border border-[#EED9D2] p-5" data-testid="quiz-plan-card">
+              <div className="flex items-center gap-2 text-[#B25A45]"><MapIcon className="h-4 w-4" /><span className="text-[11px] uppercase tracking-[0.2em] font-semibold">Your personal plan</span></div>
+              <div className="serif text-2xl mt-2 leading-tight">Four weeks, planned day by day.</div>
+              <p className="text-sm text-[#6B7269] mt-1">Classes and breathwork that fit your level, your days and your time — with one live class each week.</p>
+              <button onClick={() => createPlan(answers)} disabled={planBusy} data-testid="quiz-create-plan" className="pill pill-primary mt-4">
+                {planBusy ? "Creating your plan…" : user ? "Create my 4-week plan" : "Create free account & get my plan"} <ArrowRight className="h-4 w-4" />
+              </button>
+            </div>
 
             {result.reasons?.length > 0 && (
               <ul className="mt-5 space-y-2">

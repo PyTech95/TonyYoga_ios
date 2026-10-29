@@ -1,4 +1,4 @@
-import { LayoutDashboard, Youtube, Package, GraduationCap, Calendar, ClipboardCheck, Mic, MountainSnow, Gift, Settings, Upload, Flower2, Sparkles, ShoppingBag, Truck, Image, FileText, MessageSquareQuote, Smartphone, CalendarClock, CreditCard, Search, FilePlus2, Newspaper, Users, Tags } from "lucide-react";
+import { Hotel, BadgeCheck, CalendarCheck, BookOpenCheck, LayoutDashboard, Youtube, Package, GraduationCap, Calendar, ClipboardCheck, Mic, MountainSnow, Gift, Settings, Upload, Flower2, Sparkles, ShoppingBag, Truck, Image, FileText, MessageSquareQuote, Smartphone, CalendarClock, CreditCard, Search, FilePlus2, Newspaper, Users, Tags } from "lucide-react";
 
 export const ADMIN_GROUPS = [
   { label: "Workspace", items: [{ key: "stats", label: "Overview", icon: LayoutDashboard }] },
@@ -12,7 +12,9 @@ export const ADMIN_GROUPS = [
     { key: "downloads", label: "App & pop-up offers", icon: Smartphone },
   ] },
   { label: "Teaching & content", items: [
+    { key: "classmgr", label: "Class manager (rosters & attendance)", icon: CalendarCheck },
     { key: "courses", label: "Courses & videos", icon: Youtube },
+    { key: "learning", label: "Learning (LMS) & progress", icon: BookOpenCheck },
     { key: "team", label: "Instructors (photo & bio)", icon: Users },
     { key: "classes", label: "Classes & schedule", icon: Calendar },
     { key: "pricing", label: "Class pricing", icon: CreditCard },
@@ -25,6 +27,8 @@ export const ADMIN_GROUPS = [
   ] },
   { label: "Community", items: [
     { key: "students", label: "Students, access & payments", icon: GraduationCap },
+    { key: "teachers", label: "Teacher Hub", icon: BadgeCheck },
+    { key: "hotels", label: "Hotels & resorts", icon: Hotel },
     { key: "apps", label: "Applications", icon: ClipboardCheck },
     { key: "leads", label: "Quiz leads", icon: Sparkles },
     { key: "broadcast", label: "Broadcasts", icon: Mic },

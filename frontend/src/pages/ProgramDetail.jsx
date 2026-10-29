@@ -3,7 +3,8 @@ import IOSPrice from "@/components/IOSPrice";
 import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
 import { useEffect, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Lock, Play, CheckCircle2, RotateCcw, Clock, Award, ShieldCheck, Sparkles, ClipboardCheck, PlayCircle, ShoppingBag, Tag } from "lucide-react";
+import { Lock, Play, CheckCircle2, RotateCcw, Clock, Award, ShieldCheck, Sparkles, ClipboardCheck, PlayCircle, ShoppingBag, Tag, HelpCircle, FileText, ArrowRight } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
 import { api } from "@/lib/api";
 import { cart } from "@/lib/cart";
@@ -25,6 +26,8 @@ export default function ProgramDetail() {
   const [p, setP] = useState(null);
   const [progress, setProgress] = useState({}); // video_id -> {seconds, completed}
   const [claiming, setClaiming] = useState(false);
+  const [lms, setLms] = useState(null); // course progress from the learning system (signed-in viewers)
+  const { t } = useTranslation();
 
   const loadProgram = () => api.get(`/programs/${id}`).then(({ data }) => setP(data)).catch(() => setP(false));
   useCommerceRefresh(() => loadProgram());
@@ -48,6 +51,14 @@ export default function ProgramDetail() {
     }).catch(() => {});
   }, [user, id]);
 
+  // Course progress (done lessons, next lesson, certificate) — reloads with the course.
+  useEffect(() => {
+    if (!user) { setLms(null); return undefined; }
+    let live = true;
+    api.get(`/lms/programs/${id}/me`).then(({ data }) => { if (live) setLms(data); }).catch(() => { if (live) setLms(null); });
+    return () => { live = false; };
+  }, [user, id, p]);
+
   useSeo(p ? {
     title: `${p.title} — Online Yoga Program with Tony Sanchez | Tony Yoga`,
     description: (p.description || `${p.title}: an on-demand yoga program by Tony Sanchez.`).slice(0, 158),
@@ -63,8 +74,20 @@ export default function ProgramDetail() {
   const lessons = SHOW_LESSONS ? (p.lessons || []) : [];
   const viewer = p.viewer || {};
   const hasAccess = viewer.is_staff || viewer.owns_program || p.price_model === "free" || (p.price_model === "membership" && viewer.has_active_membership);
-  const completedCount = lessons.filter((l) => progress[l.video?.id]?.completed).length;
+  const lmsDone = {};
+  for (const sec of lms?.sections || []) for (const l of sec.lessons) if (l.done) lmsDone[l.id] = true;
+  const isLessonDone = (l) => !!progress[l.video?.id]?.completed || !!lmsDone[l.id];
+  const completedCount = lessons.filter(isLessonDone).length;
   const allDone = lessons.length > 0 && completedCount === lessons.length;
+  const certificate = lms?.certificate;
+  // Group lessons under their sections (keeps the course order).
+  const groups = [];
+  lessons.forEach((l, idx) => {
+    const name = (l.section || "").trim();
+    if (!groups.length || groups[groups.length - 1].name !== name) groups.push({ name, items: [] });
+    groups[groups.length - 1].items.push({ l, idx });
+  });
+  const hasSections = lessons.some((l) => (l.section || "").trim());
 
   const claimCertificate = async () => {
     setClaiming(true);
@@ -112,6 +135,31 @@ export default function ProgramDetail() {
 
         <EnrollCard p={p} user={user} />
 
+        {user && hasAccess && lms && lms.total > 0 && (
+          <div data-testid="course-progress-card" className="rounded-3xl bg-white border border-[#E5E6DF] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div className="eyebrow !text-[11px]">{t("lms.your_progress", "Your progress")}</div>
+              <div data-testid="course-progress-percent" className="text-sm font-semibold text-[#1C221F]">{lms.percent}%</div>
+            </div>
+            <div className="mt-2 h-2 rounded-full bg-[#EEF1EC] overflow-hidden"><div className="h-full bg-[#B25A45] transition-all" style={{ width: `${lms.percent}%` }} /></div>
+            <div className="text-xs text-[#6B7269] mt-1.5">{t("lms.done_of", "{{done}} of {{total}} lessons done", { done: lms.done, total: lms.total })}</div>
+            {certificate ? (
+              <Link to={`/certificate/${certificate.code}`} data-testid="course-certificate-banner" className="mt-4 flex items-center gap-3 rounded-2xl bg-[#1C221F] text-[#FAFAF7] p-4 hover:opacity-95 transition">
+                <span className="h-10 w-10 rounded-full bg-[#B25A45] flex items-center justify-center shrink-0"><Award className="h-5 w-5" /></span>
+                <span className="min-w-0 flex-1">
+                  <span className="block serif text-lg leading-tight">{t("lms.cert_earned", "Certificate earned")}</span>
+                  <span className="block text-xs text-white/70">{t("lms.cert_view", "View and share your certificate")}</span>
+                </span>
+                <ArrowRight className="h-4 w-4 shrink-0" />
+              </Link>
+            ) : lms.next?.video_id ? (
+              <Link to={`/library/${lms.next.video_id}`} data-testid="course-continue" className="pill pill-primary w-full mt-4">
+                <Play className="h-4 w-4" /> {lms.done > 0 ? t("lms.continue", "Continue: {{title}}", { title: lms.next.title }) : t("lms.start", "Start: {{title}}", { title: lms.next.title })}
+              </Link>
+            ) : null}
+          </div>
+        )}
+
 
         {lessons.length > 0 && (
         <div>
@@ -129,7 +177,7 @@ export default function ProgramDetail() {
             </div>
           )}
 
-          {user && allDone && (
+          {user && allDone && !certificate && (
             <button onClick={claimCertificate} disabled={claiming} data-testid="claim-certificate" className="w-full mb-4 rounded-3xl bg-[#1C221F] text-[#FAFAF7] p-5 flex items-center gap-4 hover:bg-[#0F1211] transition text-left">
               <div className="h-11 w-11 rounded-full bg-[#B25A45] flex items-center justify-center shrink-0"><Award className="h-5 w-5" /></div>
               <div className="min-w-0 flex-1">
@@ -139,11 +187,21 @@ export default function ProgramDetail() {
             </button>
           )}
 
-          <ul className="space-y-2" data-testid="program-lessons">
-            {lessons.map((l, idx) => {
+          <div className="space-y-5" data-testid="program-lessons">
+          {groups.map((g, gi) => (
+          <div key={`${g.name}-${gi}`} data-testid={hasSections ? `program-section-${gi}` : undefined}>
+            {hasSections && g.name && (
+              <div className="flex items-center justify-between mb-2 px-1">
+                <h3 className="serif text-lg leading-tight" data-testid={`program-section-title-${gi}`}>{g.name}</h3>
+                <span className="text-[11px] text-[#6B7269]">{g.items.filter(({ l }) => isLessonDone(l)).length}/{g.items.length}</span>
+              </div>
+            )}
+          <ul className="space-y-2">
+            {g.items.map(({ l, idx }) => {
               const vid = l.video?.id;
               const prog = vid ? progress[vid] : null;
-              const isDone = !!prog?.completed;
+              const isDone = isLessonDone(l);
+              const resourceCount = (l.resources || []).length || l.resource_count || 0;
               const canResume = prog && !isDone && (prog.seconds || 0) > 5;
               return (
                 <li key={l.id} className="rounded-2xl bg-white border border-[#E5E6DF] p-3">
@@ -166,6 +224,8 @@ export default function ProgramDetail() {
                         <span>{l.video?.duration_minutes || 30} min</span>
                         {isDone && <span className="text-[#839682] font-semibold">Completed</span>}
                         {canResume && <span className="text-[#B25A45] font-semibold">Resume</span>}
+                        {l.quiz_questions > 0 && <span data-testid={`lesson-quiz-badge-${l.id}`} className="inline-flex items-center gap-0.5 text-[#8A6D3B]"><HelpCircle className="h-3 w-3" /> {t("lms.quiz_badge", "Quiz")}</span>}
+                        {resourceCount > 0 && <span data-testid={`lesson-resources-badge-${l.id}`} className="inline-flex items-center gap-0.5"><FileText className="h-3 w-3" /> {resourceCount}</span>}
                       </div>
                     </div>
                     {hasAccess && l.is_unlocked ? (
@@ -191,6 +251,9 @@ export default function ProgramDetail() {
               );
             })}
           </ul>
+          </div>
+          ))}
+          </div>
         </div>
         )}
 

@@ -94,6 +94,8 @@ async def _notify(user_id, title, body, url, notify=True, email=True):
 
 
 def _sub_state(row) -> str:
+    if row.get("status") in ("paused", "past_due"):
+        return row["status"]
     if row.get("status") not in ("active", "trialing"):
         return "cancelled" if row.get("status") == "cancelled" else (row.get("status") or "inactive")
     start, end = parse_dt(row.get("start_date")), parse_dt(row.get("end_date"))
@@ -115,9 +117,10 @@ async def _invite_link(user: dict, hours: int = 72) -> str:
 
 async def _send_invite(user: dict, url: str, intro: Optional[str] = None):
     try:
+        import html as _h
         from email_service import send_email, _wrap
-        first = (user.get("name") or "").split(" ")[0] or "there"
-        body = (f"Hi {first},<br/><br/>" + (intro or "Your Tony Yoga account is ready.")
+        first = _h.escape((user.get("name") or "").split(" ")[0][:40] or "there")
+        body = (f"Hi {first},<br/><br/>" + _h.escape(intro or "Your Tony Yoga account is ready.")
                 + "<br/><br/>Tap the button to choose your password and sign in. The link works for 3 days.")
         await send_email(user["email"], "Your Tony Yoga account is ready", _wrap("Welcome to Tony Yoga.", body, "Set my password", url),
                          f"Your Tony Yoga account is ready. Set your password: {url}")
@@ -244,7 +247,8 @@ async def payment_rows(query: dict, limit: int = 200) -> List[dict]:
                     "completed_at": t.get("completed_at"), "item_type": t.get("item_type"), "item_id": t.get("item_id"),
                     "reference": t.get("session_id"), "last_check_result": t.get("last_check_result"),
                     "marked_paid_by": t.get("marked_paid_by"), "delivered": bool(t.get("after_payment_at") or t.get("fulfilled_at")),
-                    "confirmed": t.get("payment_status") == "paid"})
+                    "confirmed": t.get("payment_status") in ("paid", "refunded", "partially_refunded"),
+                    "refunded_amount": t.get("refunded_amount") or 0, "refunded_at": t.get("refunded_at"), "credit_applied": t.get("credit_applied") or 0})
     return out
 
 
@@ -278,7 +282,7 @@ async def _member_rows(q: str, segment: str):
     query: Dict[str, Any] = {}
     if q.strip():
         rx = re.escape(q.strip())
-        query["$or"] = [{"email": {"$regex": rx, "$options": "i"}}, {"name": {"$regex": rx, "$options": "i"}}, {"phone": {"$regex": rx, "$options": "i"}}]
+        query["$or"] = [{"email": {"$regex": rx, "$options": "i"}}, {"name": {"$regex": rx, "$options": "i"}}, {"phone": {"$regex": rx, "$options": "i"}}, {"tags": {"$regex": rx, "$options": "i"}}]
     if segment == "staff":
         query["role"] = {"$in": list(STAFF_ROLES)}
     elif segment != "all":
@@ -304,7 +308,7 @@ async def _member_rows(q: str, segment: str):
         credits[p["user_id"]] = credits.get(p["user_id"], 0) + int(p.get("remaining") or 0)
     recent = (now - timedelta(days=3)).isoformat()
     unconfirmed = {t["user_id"] for t in await db.payment_transactions.find(
-        {"payment_status": {"$ne": "paid"}, "status": {"$nin": ["expired", "cancelled", "failed"]}, "created_at": {"$gte": recent}},
+        {"payment_status": {"$nin": ["paid", "refunded", "partially_refunded"]}, "status": {"$nin": ["expired", "cancelled", "failed"]}, "created_at": {"$gte": recent}},
         {"_id": 0, "user_id": 1}).to_list(5000)}
     rows = []
     for u in users:
@@ -313,7 +317,7 @@ async def _member_rows(q: str, segment: str):
         r = {"id": uid, "name": u.get("name"), "email": u.get("email"), "phone": u.get("phone"), "role": u.get("role", "student"),
              "active": u.get("active", True) is not False, "created_at": u.get("created_at"), "source": u.get("source"),
              "membership": {"plan_name": plan_name(plans.get(sub.get("plan_id"))), "ends_at": sub.get("end_date"), "source": sub.get("source")} if sub else None,
-             "courses": len(courses.get(uid, ())), "credits": credits.get(uid, 0), "unconfirmed_payment": uid in unconfirmed}
+             "courses": len(courses.get(uid, ())), "credits": credits.get(uid, 0), "unconfirmed_payment": uid in unconfirmed, "tags": u.get("tags") or []}
         rows.append(r)
     if segment == "members":
         rows = [r for r in rows if r["membership"]]
@@ -367,6 +371,17 @@ class MemberCreate(BaseModel):
     password: Optional[str] = Field(default=None, min_length=8, max_length=128)
     send_invite: bool = True
     note: Optional[str] = Field(default=None, max_length=500)
+    # Optional: what the new student gets straight away
+    plan_id: Optional[str] = None
+    program_ids: Optional[List[str]] = Field(default=None, max_length=500)
+    all_programs: bool = False
+    credits: Optional[int] = Field(default=None, ge=1, le=500)
+    class_template_ids: Optional[List[str]] = Field(default=None, max_length=50)
+    starts_at: Optional[AwareDatetime] = None
+    ends_at: Optional[AwareDatetime] = None
+    days: Optional[int] = Field(default=None, ge=1, le=3650)
+    lifetime: bool = False
+    send_login_details: bool = False  # email the password the admin chose
 
 
 async def create_member(name: str, email: str, *, phone=None, password=None, source="admin", batch_id=None, note=None) -> dict:
@@ -397,14 +412,72 @@ async def admin_create_member(payload: MemberCreate, request: Request):
     existing = await db.users.find_one({"email": email}, {"_id": 0, "id": 1})
     if existing:
         raise HTTPException(409, f"A student with {email} already exists.")
+    gives_something = bool(payload.plan_id or payload.program_ids or payload.all_programs or payload.class_template_ids)
+    window = Window(starts_at=payload.starts_at, ends_at=payload.ends_at, days=payload.days, lifetime=payload.lifetime)
+    if gives_something:
+        start, end = window.resolve()  # check the period before creating anything
+    plan = None
+    if payload.plan_id:
+        plan = await db.membership_plans.find_one({"id": payload.plan_id}, {"_id": 0})
+        if not plan:
+            raise HTTPException(404, "Membership plan not found")
+    course_ids = await course_ids_for(payload.program_ids, payload.all_programs) if (payload.program_ids or payload.all_programs) else []
+    templates = []
+    for tid in payload.class_template_ids or []:
+        t = await db.class_templates.find_one({"id": tid}, {"_id": 0, "id": 1, "title": 1})
+        if not t:
+            raise HTTPException(404, "Class series not found")
+        templates.append(t)
     user = await create_member(payload.name, email, phone=payload.phone, password=payload.password, note=payload.note)
     invite_url = None
     if not payload.password:
         invite_url = await _invite_link(user)
-        if payload.send_invite:
-            await _send_invite(user, invite_url)
-    await _audit(admin, user["id"], "created", f"Account created by admin{' (invite emailed)' if payload.send_invite and invite_url else ''}")
-    return {"user": user, "invite_url": invite_url}
+    await _audit(admin, user["id"], "created", "Account created by admin" + (" with a password set by the admin" if payload.password else ""))
+    given = []
+    if plan:
+        await give_membership(user["id"], plan, start, end, admin=admin, note=payload.note)
+        await _audit(admin, user["id"], "membership_added", f"{plan_name(plan)} · {_fmt_date(start)} → {_fmt_date(end)}")
+        given.append(f"{plan_name(plan)} membership")
+    if course_ids:
+        grants = await give_courses(admin, user["id"], course_ids, start, end, note=payload.note, notify=False)
+        given.append(f"{len(grants)} course(s)")
+    for t in templates:
+        await give_series(admin, user["id"], t, start, end)
+        given.append(t["title"])
+    if payload.credits:
+        pid = gen_id()
+        await db.class_passes.insert_one({"_id": pid, "id": pid, "user_id": user["id"], "active": True, "remaining": payload.credits,
+                                          "source": "admin", "granted_by": admin.get("email"), "created_at": now_utc().isoformat()})
+        await _audit(admin, user["id"], "credits_added", f"{payload.credits} class credit(s)")
+        given.append(f"{payload.credits} class credit(s)")
+    intro = "Your Tony Yoga account is ready." + (f" It includes: {', '.join(given)}." if given else "")
+    emailed = False
+    if invite_url and payload.send_invite:
+        await _send_invite(user, invite_url, intro)
+        emailed = True
+    elif payload.password and payload.send_login_details:
+        await _send_login_details(user, payload.password, intro)
+        emailed = True
+    return {"user": user, "invite_url": invite_url, "given": given, "emailed": emailed,
+            "login": {"email": user["email"], "password_set": bool(payload.password), "sign_in_url": f"{_site_base()}/login"}}
+
+
+def _site_base() -> str:
+    return (os.environ.get("FRONTEND_URL") or "").rstrip("/") or "https://tonyoga.com"
+
+
+async def _send_login_details(user: dict, password: str, intro: str):
+    """Email the sign-in email and the password the admin chose (only when the admin asks)."""
+    try:
+        import html as _h
+        from email_service import send_email, _wrap
+        first = (user.get("name") or "").split(" ")[0] or "there"
+        body = (f"Hi {_h.escape(first)},<br/><br/>{_h.escape(intro)}<br/><br/>Email: <strong>{_h.escape(user['email'])}</strong><br/>"
+                f"Password: <strong>{_h.escape(password)}</strong><br/><br/>Please change your password after signing in (Profile → Password).")
+        await send_email(user["email"], "Your Tony Yoga sign-in details", _wrap("Welcome to Tony Yoga.", body, "Sign in", f"{_site_base()}/login"),
+                         f"Your Tony Yoga account: {user['email']}. Sign in at {_site_base()}/login")
+    except Exception as exc:
+        logger.warning("login details email failed (%s)", type(exc).__name__)
 
 
 class MemberPatch(BaseModel):
@@ -415,6 +488,9 @@ class MemberPatch(BaseModel):
     active: Optional[bool] = None
     admin_note: Optional[str] = Field(default=None, max_length=2000)
     store_credit: Optional[float] = Field(default=None, ge=0, le=100000)
+    password: Optional[str] = Field(default=None, min_length=8, max_length=128)
+    send_login_details: bool = False
+    tags: Optional[List[str]] = None
 
 
 @api.patch("/admin/members/{user_id}")
@@ -450,9 +526,19 @@ async def admin_update_member(user_id: str, payload: MemberPatch, request: Reque
     if data.get("store_credit") is not None:
         update["store_credit"] = round(float(data["store_credit"]), 2)
         changes.append(f"store credit set to {update['store_credit']:.2f}")
+    if data.get("password"):
+        update["password_hash"] = hash_password(data["password"])
+        update["password_changed_at"] = now_utc().isoformat()
+        changes.append("password set by admin")
+    if data.get("tags") is not None:
+        update["tags"] = sorted({str(t).strip()[:30] for t in data["tags"] if str(t).strip()})[:20]
+        changes.append("tags updated")
     if update:
         await db.users.update_one({"id": user_id}, {"$set": update})
         await _audit(admin, user_id, "profile", "; ".join(changes))
+    if data.get("password") and payload.send_login_details:
+        await _send_login_details({**user, **{k: v for k, v in update.items() if k in ("email", "name")}}, data["password"],
+                                  "Tony Yoga set a new password for your account.")
     return await _member(user_id)
 
 
@@ -472,7 +558,9 @@ async def admin_login_link(user_id: str, request: Request, send_email: bool = Tr
 # Courses
 
 class CourseGrantIn(Window):
-    program_id: str
+    program_id: Optional[str] = None
+    program_ids: Optional[List[str]] = Field(default=None, max_length=500)
+    all_programs: bool = False
     note: Optional[str] = Field(default=None, max_length=300)
     notify: bool = True
 
@@ -492,17 +580,55 @@ async def give_course(user_id: str, program_id: str, start: str, end: str, *, so
     return grant
 
 
+async def course_ids_for(program_ids: Optional[List[str]], all_programs: bool = False) -> List[str]:
+    """The courses an admin picked: one, several, or every course on Tony Yoga."""
+    if all_programs:
+        rows = await db.programs.find({}, {"_id": 0, "id": 1}).to_list(2000)
+        return [r["id"] for r in rows]
+    ids = []
+    for pid in program_ids or []:
+        if pid and pid not in ids:
+            ids.append(pid)
+    if not ids:
+        raise HTTPException(422, "Choose at least one course.")
+    found = {r["id"] for r in await db.programs.find({"id": {"$in": ids}}, {"_id": 0, "id": 1}).to_list(len(ids))}
+    missing = [i for i in ids if i not in found]
+    if missing:
+        raise HTTPException(404, f"{len(missing)} of the chosen courses no longer exist.")
+    return ids
+
+
+async def give_courses(admin: dict, user_id: str, program_ids: List[str], start: str, end: str, *, note=None, notify=True, label="") -> List[dict]:
+    grants = [await give_course(user_id, pid, start, end, admin=admin, note=note) for pid in program_ids]
+    if not grants:
+        return grants
+    titles = [g["title"] for g in grants]
+    summary = titles[0] if len(titles) == 1 else f"{len(titles)} courses: " + ", ".join(titles[:6]) + ("…" if len(titles) > 6 else "")
+    await _audit(admin, user_id, "course_added", f"{summary} · {_fmt_date(start)} → {_fmt_date(end)}{label}")
+    until = "" if end == LIFETIME_END else f" until {_fmt_date(end)}"
+    if len(grants) == 1:
+        await _notify(user_id, "A course was added to your account", f"{titles[0]} is ready for you{until}. Enjoy your practice!",
+                      f"/programs/{grants[0]['target_id']}", notify)
+    else:
+        await _notify(user_id, f"{len(grants)} courses were added to your account", f"{', '.join(titles[:3])}{' and more' if len(titles) > 3 else ''} are ready for you{until}.",
+                      "/my-yoga", notify)
+    return grants
+
+
 @api.post("/admin/members/{user_id}/courses")
 async def admin_give_course(user_id: str, payload: CourseGrantIn, request: Request):
+    """Give one course (program_id) or several (program_ids / all_programs) for the same period."""
     admin = await _admin(request)
     await _member(user_id)
     start, end = payload.resolve()
-    grant = await give_course(user_id, payload.program_id, start, end, admin=admin, note=payload.note)
-    await _audit(admin, user_id, "course_added", f"{grant['title']} · {_fmt_date(start)} → {_fmt_date(end)}")
-    until = "" if end == LIFETIME_END else f" until {_fmt_date(end)}"
-    await _notify(user_id, "A course was added to your account", f"{grant['title']} is ready for you{until}. Enjoy your practice!",
-                  f"/programs/{payload.program_id}", payload.notify)
-    return grant
+    if payload.program_ids or payload.all_programs:
+        ids = await course_ids_for(payload.program_ids, payload.all_programs)
+        grants = await give_courses(admin, user_id, ids, start, end, note=payload.note, notify=payload.notify)
+        return {"grants": grants, "count": len(grants)}
+    if not payload.program_id:
+        raise HTTPException(422, "Choose a course.")
+    grants = await give_courses(admin, user_id, [payload.program_id], start, end, note=payload.note, notify=payload.notify)
+    return grants[0]
 
 
 class GrantUpdate(BaseModel):
@@ -598,14 +724,19 @@ async def admin_give_series(user_id: str, payload: SeriesGrantIn, request: Reque
     if not template:
         raise HTTPException(404, "Class series not found")
     start, end = payload.resolve()
+    grant = await give_series(admin, user_id, template, start, end, note=payload.note)
+    await _notify(user_id, "Live classes added", f"You can now book {template['title']} classes until {_fmt_date(end)}.", "/schedule", payload.notify)
+    return grant
+
+
+async def give_series(admin: dict, user_id: str, template: dict, start: str, end: str, note=None) -> dict:
     gid = gen_id()
     grant = {"_id": gid, "id": gid, "user_id": user_id, "kind": "class_template", "target_id": template["id"], "title": template["title"],
              "starts_at": start, "ends_at": end, "source": "admin", "return_path": "/schedule", "granted_by": admin.get("email"),
-             "note": payload.note, "created_at": now_utc().isoformat()}
+             "note": note, "created_at": now_utc().isoformat()}
     await db.access_grants.insert_one(grant)
     grant.pop("_id", None)
     await _audit(admin, user_id, "classes_added", f"{template['title']} · {_fmt_date(start)} → {_fmt_date(end)}")
-    await _notify(user_id, "Live classes added", f"You can now book {template['title']} classes until {_fmt_date(end)}.", "/schedule", payload.notify)
     return grant
 
 
@@ -862,11 +993,13 @@ async def admin_payments(request: Request, status: str = "all", q: str = "", day
     await _admin(request)
     query: Dict[str, Any] = {"created_at": {"$gte": (now_utc() - timedelta(days=max(1, min(3650, days)))).isoformat()}}
     if status == "unconfirmed":
-        query.update({"payment_status": {"$ne": "paid"}, "status": {"$nin": ["expired", "cancelled", "failed"]}})
+        query.update({"payment_status": {"$nin": ["paid", "refunded", "partially_refunded"]}, "status": {"$nin": ["expired", "cancelled", "failed"]}})
     elif status == "paid":
-        query["payment_status"] = "paid"
+        query["payment_status"] = {"$in": ["paid", "partially_refunded"]}
+    elif status == "refunded":
+        query["payment_status"] = {"$in": ["refunded", "partially_refunded"]}
     elif status == "abandoned":
-        query.update({"payment_status": {"$ne": "paid"}, "status": {"$in": ["expired", "cancelled", "failed"]}})
+        query.update({"payment_status": {"$nin": ["paid", "refunded", "partially_refunded"]}, "status": {"$in": ["expired", "cancelled", "failed"]}})
     if q.strip():
         rx = re.escape(q.strip())
         query["$or"] = [{"user_email": {"$regex": rx, "$options": "i"}}, {"session_id": {"$regex": rx, "$options": "i"}}]
@@ -929,9 +1062,12 @@ async def admin_redeliver(txn_id: str, request: Request):
 
 class BulkIn(BaseModel):
     user_ids: List[str] = Field(min_length=1, max_length=2000)
-    action: str = Field(pattern="^(membership|course|credits|message|extend)$")
+    action: str = Field(pattern="^(membership|course|credits|message|extend|remove_course|end_membership|tag)$")
     plan_id: Optional[str] = None
     program_id: Optional[str] = None
+    program_ids: Optional[List[str]] = Field(default=None, max_length=500)
+    all_programs: bool = False
+    tag: Optional[str] = Field(default=None, max_length=30)
     credits: Optional[int] = Field(default=None, ge=1, le=500)
     starts_at: Optional[AwareDatetime] = None
     ends_at: Optional[AwareDatetime] = None
@@ -953,10 +1089,11 @@ async def admin_bulk(payload: BulkIn, request: Request):
         plan = await db.membership_plans.find_one({"id": payload.plan_id}, {"_id": 0})
         if not plan:
             raise HTTPException(404, "Choose a membership plan.")
-    if payload.action == "course":
-        program = await db.programs.find_one({"id": payload.program_id}, {"_id": 0})
-        if not program:
-            raise HTTPException(404, "Choose a course.")
+    course_ids = []
+    if payload.action in ("course", "remove_course"):
+        course_ids = await course_ids_for(payload.program_ids or ([payload.program_id] if payload.program_id else []), payload.all_programs)
+    if payload.action == "tag" and not payload.tag:
+        raise HTTPException(422, "Write the tag.")
     if payload.action == "message" and not (payload.title and payload.body):
         raise HTTPException(422, "Write a title and a message.")
     if payload.action == "credits" and not payload.credits:
@@ -964,6 +1101,7 @@ async def admin_bulk(payload: BulkIn, request: Request):
     if payload.action == "extend" and not payload.days:
         raise HTTPException(422, "How many days to add?")
     from notify import notify_member
+    skipped = 0
     for u in users:
         uid = u["id"]
         if payload.action == "membership":
@@ -974,10 +1112,28 @@ async def admin_bulk(payload: BulkIn, request: Request):
                 await notify_member(uid, f"{plan_name(plan)} membership activated", f"Your {plan_name(plan)} membership is active until {_fmt_date(end)}.", "/my-yoga")
         elif payload.action == "course":
             start, end = window.resolve()
-            await give_course(uid, program["id"], start, end, admin=admin)
-            await _audit(admin, uid, "course_added", f"{program['title']} · {_fmt_date(start)} → {_fmt_date(end)} (bulk)")
-            if payload.notify:
-                await notify_member(uid, "A course was added to your account", f"{program['title']} is ready for you.", f"/programs/{program['id']}")
+            await give_courses(admin, uid, course_ids, start, end, notify=payload.notify, label=" (bulk)")
+        elif payload.action == "remove_course":
+            now_iso = now_utc().isoformat()
+            r = await db.access_grants.update_many({"user_id": uid, "kind": "program", "target_id": {"$in": course_ids}, "revoked_at": {"$in": [None, ""]}},
+                                                   {"$set": {"revoked_at": now_iso, "revoked_by": admin.get("email")}})
+            await db.program_enrollments.update_many({"user_id": uid, "program_id": {"$in": course_ids}, "access_version": {"$exists": False}},
+                                                     {"$set": {"revoked_at": now_iso}})
+            await db.payment_transactions.update_many({"user_id": uid, "item_type": "program", "item_id": {"$in": course_ids}, "access_snapshot": {"$exists": False}},
+                                                      {"$set": {"access_revoked_at": now_iso}})
+            await db.membership_picks.update_many({"user_id": uid, "program_id": {"$in": course_ids}, "removed_at": {"$exists": False}}, {"$set": {"removed_at": now_iso}})
+            await _audit(admin, uid, "course_removed", f"{len(course_ids)} course(s) removed (bulk); {r.modified_count} access record(s)")
+        elif payload.action == "end_membership":
+            now_iso = now_utc().isoformat()
+            for sub in await active_memberships(uid):
+                if sub.get("stripe_subscription_id") or sub.get("source") == "apple_iap":
+                    skipped += 1  # stop these in Stripe / Apple, or they would renew again
+                    continue
+                await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": "cancelled", "end_date": now_iso, "cancelled_at": now_iso,
+                                                                              "cancelled_by": admin.get("email")}})
+                await _audit(admin, uid, "membership_changed", "membership ended now (bulk)")
+        elif payload.action == "tag":
+            await db.users.update_one({"id": uid}, {"$addToSet": {"tags": payload.tag.strip()}})
         elif payload.action == "credits":
             pid = gen_id()
             await db.class_passes.insert_one({"_id": pid, "id": pid, "user_id": uid, "active": True, "remaining": payload.credits,
@@ -987,6 +1143,9 @@ async def admin_bulk(payload: BulkIn, request: Request):
                 await notify_member(uid, "Class credits added", f"{payload.credits} class credit(s) were added to your account.", "/schedule")
         elif payload.action == "extend":
             for sub in await active_memberships(uid):
+                if sub.get("stripe_subscription_id") or sub.get("source") == "apple_iap" or str(sub.get("end_date")).startswith("2099"):
+                    skipped += 1  # card / Apple renewals and lifetime memberships are managed elsewhere
+                    continue
                 base = max(parse_dt(sub.get("end_date")) or now_utc(), now_utc())
                 end = _iso(base + timedelta(days=payload.days))
                 await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"end_date": end, "next_billing_date": end}})
@@ -995,7 +1154,7 @@ async def admin_bulk(payload: BulkIn, request: Request):
             await notify_member(uid, payload.title, payload.body, "/my-yoga")
             await _audit(admin, uid, "message", f"{payload.title} (bulk)")
         done += 1
-    return {"done": done}
+    return {"done": done, "skipped": skipped}
 
 
 # ---------------------------------------------------------------------------
@@ -1277,8 +1436,11 @@ async def my_library(user: dict = Depends(get_current_user)):
         done = await db.watch_progress.count_documents({"user_id": uid, "video_id": {"$in": vids}, "completed": True}) if vids else 0
         c.update(total_lessons=len(vids), completed_lessons=done, percent=round(done * 100 / len(vids)) if vids else 0)
         c.pop("grants", None)
-    memberships = [m for m in await member_memberships(uid) if m["state"] in ("active", "upcoming") or
-                   (parse_dt(m.get("end_date")) and parse_dt(m.get("end_date")) > now_utc() - timedelta(days=60))]
+    memberships = [m for m in await member_memberships(uid) if m["state"] in ("active", "upcoming", "paused", "past_due") or
+                   (m["state"] != "replaced" and parse_dt(m.get("end_date")) and parse_dt(m.get("end_date")) > now_utc() - timedelta(days=60))]
+    for m in memberships:
+        m["auto_renews"] = bool(m.get("stripe_subscription_id")) and not m.get("cancel_at_period_end")
+        m["managed_by"] = "apple" if m.get("source") == "apple_iap" else ("stripe" if m.get("stripe_subscription_id") else "tony")
     choose = []
     for m in memberships:
         if m["state"] == "active" and m["choose_courses"] > len(m["picks"]):
@@ -1294,7 +1456,7 @@ async def my_library(user: dict = Depends(get_current_user)):
     upcoming = [b for b in await _bookings(uid, 60) if b["status"] in ("confirmed", "waitlist") and str(b.get("start_time") or "") >= now_iso]
     upcoming.sort(key=lambda b: str(b.get("start_time")))
     orders = await db.orders.find({"user_id": uid, "status": {"$ne": "pending"}}, {"_id": 0}).sort("created_at", -1).to_list(30)
-    pending = await db.payment_transactions.find({"user_id": uid, "payment_status": {"$ne": "paid"}, "status": {"$nin": ["expired", "cancelled", "failed"]},
+    pending = await db.payment_transactions.find({"user_id": uid, "payment_status": {"$nin": ["paid", "refunded", "partially_refunded"]}, "status": {"$nin": ["expired", "cancelled", "failed"]},
                                                  "created_at": {"$gte": (now_utc() - timedelta(days=3)).isoformat()}},
                                                 {"_id": 0, "id": 1, "created_at": 1, "item_type": 1, "amount": 1, "currency": 1}).to_list(10)
     return {

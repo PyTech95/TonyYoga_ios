@@ -1,16 +1,18 @@
 import { useState } from "react";
-import { Link, Navigate, useNavigate } from "react-router-dom";
+import { Link, Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
 import AuthHero from "@/components/AuthHero";
-import { getAuthDestination } from "@/lib/authRouting";
+import { getAuthDestination, safeNext } from "@/lib/authRouting";
 
 export default function Login() {
   const nav = useNavigate();
   const { login, user, ready } = useAuth();
   const { t } = useTranslation();
+  const [params] = useSearchParams();
+  const next = safeNext(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [remember, setRemember] = useState(true);
@@ -23,7 +25,7 @@ export default function Login() {
     try {
       const signedInUser = await login(email.trim(), password, remember);
       toast.success(t("login.welcome_back"));
-      nav(getAuthDestination(signedInUser), { replace: true });
+      nav(next && signedInUser?.active !== false ? next : getAuthDestination(signedInUser), { replace: true });
     } catch (err) {
       toast.error(err?.response?.data?.detail || t("login.failed"));
     } finally {
@@ -54,7 +56,7 @@ export default function Login() {
   };
 
   if (!ready) return <p data-testid="login-session-loading" className="p-6 text-sm">Checking session…</p>;
-  if (user) return <Navigate to={getAuthDestination(user)} replace />;
+  if (user) return <Navigate to={next && user.active !== false ? next : getAuthDestination(user)} replace />;
 
   return (
     <div data-testid="login-page">
@@ -107,7 +109,7 @@ export default function Login() {
 
         <p className="text-center text-[13px] text-[#6B7269]">
           {t("login.new_here")}{" "}
-          <Link to="/register" data-testid="login-link-register" className="underline text-[#1C221F]">{t("login.create_account")}</Link>
+          <Link to={next ? `/register?next=${encodeURIComponent(next)}` : "/register"} data-testid="login-link-register" className="underline text-[#1C221F]">{t("login.create_account")}</Link>
         </p>
 
         <div className="flex items-center justify-center gap-4 text-[13px]">

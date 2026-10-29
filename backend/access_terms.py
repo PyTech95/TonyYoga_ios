@@ -92,10 +92,23 @@ def _membership_live(row, now, through=None):
     return bool(start and end and start <= now < end and (through is None or through <= end))
 
 
+async def _grace_days():
+    try:
+        from routers.settings import get_setting
+        return int(await get_setting("past_due_grace_days") or 7)
+    except Exception:
+        return 7
+
+
 async def active_memberships(user_id, through=None):
-    rows = await db.subscriptions.find({"user_id": user_id, "status": {"$in": ["active", "trialing"]}}, {"_id": 0}).to_list(100)
+    """Memberships giving access now. A renewal whose card failed (past_due) keeps access for
+    the grace period set in Admin → Settings."""
+    rows = await db.subscriptions.find({"user_id": user_id, "status": {"$in": ["active", "trialing", "past_due"]}}, {"_id": 0}).to_list(100)
     now = now_utc()
-    live = [r for r in rows if _membership_live(r, now, through)]
+    if any(r.get("status") == "past_due" for r in rows):
+        grace = timedelta(days=await _grace_days())
+        rows = [r for r in rows if r.get("status") != "past_due" or ((parse_dt(r.get("past_due_since")) or now) + grace > now)]
+    live = [r for r in rows if _membership_live(r, now, through) or (r.get("status") == "past_due" and _membership_live({**r, "end_date": (now + timedelta(days=1)).isoformat()}, now, None))]
     live.sort(key=lambda r: str(r.get("end_date") or ""), reverse=True)
     return live
 

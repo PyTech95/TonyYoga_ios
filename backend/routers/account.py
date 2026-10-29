@@ -28,7 +28,9 @@ _PERSONAL_COLLECTIONS = [
     "practice_streaks", "challenge_enrollments", "free_class_grants", "pass_usages",
     "user_notifications", "assistant_requests", "assistant_usage", "chatbot_sessions",
     "ios_purchase_intents", "teacher_training_registrations",
-    "device_tokens", "membership_picks", "member_audit",
+    "device_tokens", "membership_picks", "member_audit", "practice_plans",
+    "hotel_guests", "teacher_enrollments", "teacher_students", "teacher_credits", "teachers",
+    "lesson_completions", "quiz_attempts", "lesson_notes", "lesson_questions",
 ]
 
 
@@ -144,6 +146,7 @@ async def _run_purge_deleted_accounts() -> dict:
                     continue
                 for coll in _PERSONAL_COLLECTIONS:
                     await db[coll].delete_many({"user_id": uid})
+                await db.hotel_partners.update_many({"user_ids": uid}, {"$pull": {"user_ids": uid}})
                 # The following records use email or reference fields rather than user_id.
                 for coll in ("magic_link_tokens", "password_reset_tokens", "deletion_requests", "newsletter_subscribers", "quiz_leads", "ai_leads", "enquiries", "instructor_applications", "referral_invites"):
                     await db[coll].delete_many({"$or": [{"user_id": uid}, {"email": email}]})

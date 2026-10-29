@@ -215,7 +215,8 @@ async def reset_password(payload: PasswordReset, response: Response):
     claimed = await db.password_reset_tokens.update_one({"id": rec["id"], "used": False}, {"$set": {"used": True}})
     if not claimed.modified_count:
         raise HTTPException(400, "This link has already been used.")
-    await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(payload.new_password)}})
+    await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(payload.new_password),
+                                                                "password_changed_at": now_utc().isoformat()}})
     # Sign the member straight in (an invite from the admin or a reset link both prove the email).
     user = await db.users.find_one({"id": rec["user_id"]}, {"_id": 0, "password_hash": 0})
     if not user or user.get("active") is False:

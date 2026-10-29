@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useFeatures } from "@/lib/features";
 import { Sparkles, MapPin, ArrowRight } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { api } from "@/lib/api";
@@ -17,6 +18,7 @@ export default function SiteFooter() {
   const { t } = useTranslation();
   const config = useSeoConfig();
   const pages = useCmsPages().filter((p) => p.show_in_footer);
+  const features = useFeatures();
   // Cities switched off in Admin → SEO & Google are left out.
   const bySlug = Object.fromEntries(mergeLocations(config).map((l) => [l.slug, l]));
   const contactEmail = config?.global?.organization_email || "tony@tonysanchezyoga.com";
@@ -118,6 +120,11 @@ export default function SiteFooter() {
             <Link key={p.slug} to={`/${p.slug}`} data-testid={`footer-page-${p.slug}`} className="text-white/60 hover:text-white transition">{p.menu_label || p.title}</Link>
           ))}
           <Link to="/locations" data-testid="footer-locations-link" className="text-white/60 hover:text-white transition">Locations</Link>
+          {features.teachers && <Link to="/teachers" data-testid="footer-teachers" className="text-white/60 hover:text-white transition">Find a teacher</Link>}
+          {features.hotels && <Link to="/hotels" data-testid="footer-hotels" className="text-white/60 hover:text-white transition">Hotels &amp; resorts</Link>}
+          {features.gifts && <Link to="/gift" data-testid="footer-gift" className="text-white/60 hover:text-white transition">Gift a membership</Link>}
+          <Link to="/redeem" data-testid="footer-redeem" className="text-white/60 hover:text-white transition">Redeem a gift</Link>
+          <Link to="/withdraw" data-testid="footer-withdraw" className="text-white/60 hover:text-white transition">Withdraw from a purchase</Link>
           <Link to="/privacy" data-testid="footer-privacy" className="text-white/60 hover:text-white transition">Privacy</Link>
           <Link to="/terms" data-testid="footer-terms" className="text-white/60 hover:text-white transition">Terms</Link>
           <Link to="/account-deletion" data-testid="footer-account-deletion" className="text-white/60 hover:text-white transition">Delete account</Link>

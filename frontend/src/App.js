@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
+import { useEffect, useRef } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useLocation } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { isNativeApp } from "@/lib/platform";
@@ -66,11 +66,42 @@ import { isIOSApp } from "@/lib/iosPlatform";
 import IOSCommerceLifecycle from "@/components/IOSCommerceLifecycle";
 import AuthLoading from "@/components/AuthLoading";
 import IOSAssistantConsent from "@/components/IOSAssistantConsent";
+import MyPlan from "@/pages/MyPlan";
+import Gift from "@/pages/Gift";
+import Redeem from "@/pages/Redeem";
+import Withdraw from "@/pages/Withdraw";
+import Hotels from "@/pages/hotels/Hotels";
+import PartnerPortal from "@/pages/hotels/PartnerPortal";
+import PartnerInvoice from "@/pages/hotels/PartnerInvoice";
+import StayPage from "@/pages/hotels/StayPage";
+import Teachers from "@/pages/teachers/Teachers";
+import TeacherProfile from "@/pages/teachers/TeacherProfile";
+import TeacherApply from "@/pages/teachers/TeacherApply";
+import VerifyCertificate from "@/pages/teachers/VerifyCertificate";
+import TeachHub from "@/pages/teachers/TeachHub";
+import TeacherCourse from "@/pages/teachers/TeacherCourse";
+import MyClasses from "@/pages/MyClasses";
+import MyPayments from "@/pages/MyPayments";
+import Receipt from "@/pages/Receipt";
+import MyLearning from "@/pages/MyLearning";
 
 function RequireAuth({ children }) {
   const { user, ready, networkError } = useAuth();
+  const location = useLocation();
+  const hadUser = useRef(false);
+  if (user) hadUser.current = true;
   if (!ready || (networkError && !user)) return <AuthLoading />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (!user && hadUser.current) {
+    // Signed out on this page: go to the start screen, not "sign in to see this page".
+    return <Navigate to="/" replace />;
+  }
+  if (!user) {
+    // While a page animates out after sign-out the location is already /login: never
+    // redirect from there again (that would nest ?next= forever).
+    if (/^\/(login|register|reset-password|magic-link)\b/.test(location.pathname)) return null;
+    const here = location.pathname + location.search;
+    return <Navigate to={here && here !== "/" ? `/login?next=${encodeURIComponent(here)}` : "/login"} replace />;
+  }
   return children;
 }
 
@@ -119,6 +150,9 @@ export default function App() {
           <Route path="/support" element={<Support />} />
           <Route path="/locations" element={<Locations />} />
           <Route path="/locations/:slug" element={<LocationDetail />} />
+          {/* Printable pages (no app chrome) */}
+          <Route path="/partner/invoice/:stayId/:kind" element={<RequireAuth><PartnerInvoice /></RequireAuth>} />
+          <Route path="/receipt/:id" element={<RequireAuth><Receipt /></RequireAuth>} />
           {/* Pages from Admin → Custom pages and Journal posts: website layout on the web,
               inside the app shell (tab bar, back button) in the iOS/Android app. */}
           {!NATIVE && <Route path="/news/:slug" element={<NewsArticle />} />}
@@ -164,6 +198,22 @@ export default function App() {
             <Route path="/my-yoga" element={<RequireAuth><MyYoga /></RequireAuth>} />
             <Route path="/referrals" element={isIOSApp() ? <Navigate to="/profile" replace /> : <RequireAuth><Referrals /></RequireAuth>} />
             <Route path="/instructor" element={<RequireAuth><Instructor /></RequireAuth>} />
+            <Route path="/my-plan" element={<RequireAuth><MyPlan /></RequireAuth>} />
+            <Route path="/my-classes" element={<RequireAuth><MyClasses /></RequireAuth>} />
+            <Route path="/my-payments" element={<RequireAuth><MyPayments /></RequireAuth>} />
+            <Route path="/my-learning" element={<RequireAuth><MyLearning /></RequireAuth>} />
+            <Route path="/gift" element={isIOSApp() ? <Navigate to="/memberships" replace /> : <Gift />} />
+            <Route path="/redeem" element={isIOSApp() ? <Navigate to="/my-yoga" replace /> : <Redeem />} />
+            <Route path="/withdraw" element={<Withdraw />} />
+            <Route path="/hotels" element={isIOSApp() ? <Navigate to="/" replace /> : <Hotels />} />
+            <Route path="/partner" element={isIOSApp() ? <Navigate to="/" replace /> : <RequireAuth><PartnerPortal /></RequireAuth>} />
+            <Route path="/stay/:slug" element={<StayPage />} />
+            <Route path="/teachers" element={isIOSApp() ? <Navigate to="/" replace /> : <Teachers />} />
+            <Route path="/teachers/apply" element={isIOSApp() ? <Navigate to="/" replace /> : <RequireAuth><TeacherApply /></RequireAuth>} />
+            <Route path="/teachers/verify/:certId" element={<VerifyCertificate />} />
+            <Route path="/teachers/:slug" element={isIOSApp() ? <Navigate to="/" replace /> : <TeacherProfile />} />
+            <Route path="/teach" element={isIOSApp() ? <Navigate to="/" replace /> : <RequireAuth><TeachHub /></RequireAuth>} />
+            <Route path="/teacher-course/:id" element={<RequireAuth><TeacherCourse /></RequireAuth>} />
             <Route path="/checkout/success" element={<CheckoutSuccess />} />
             <Route path="/checkout/cancel" element={<CheckoutCancel />} />
             {NATIVE && <Route path="/news/:slug" element={<NewsArticle />} />}

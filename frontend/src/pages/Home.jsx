@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import Spinner from "@/components/Spinner";
 import StreakCard from "@/components/StreakCard";
 import MyYogaCard from "@/components/MyYogaCard";
+import TodayCard from "@/components/TodayCard";
 import Logo from "@/components/Logo";
 import FadeImg from "@/components/FadeImg";
 import { useSiteImages, siteImage } from "@/lib/siteData";
@@ -83,6 +84,9 @@ export default function HomePage() {
       </div>
 
       <div className="mx-auto max-w-2xl px-5 mt-10 space-y-10">
+        {/* Today: monthly theme, today's plan step, next live class (signed-in only) */}
+        {user && <TodayCard />}
+
         {/* What the member has (signed-in only) */}
         {user && user.role !== "admin" && <MyYogaCard compact />}
 

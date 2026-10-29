@@ -8,6 +8,7 @@ import { parseYouTubeId, isYouTube, secToMMSS, mmssToSec, youTubeThumb } from "@
 import { Field, inputCls } from "./shared";
 import { AccessTermFields, defaultTerm, termError } from "@/components/AccessTerm";
 import { ContentImageInput } from "@/components/ContentImageInput";
+import LessonExtrasEditor, { SectionsEditor } from "./lms/LessonExtrasEditor";
 
 function LessonsEditor({ programId }) {
   const [lessons, setLessons] = useState(null);
@@ -15,6 +16,8 @@ function LessonsEditor({ programId }) {
   const [bulk, setBulk] = useState(null); // bulk mode { youtube_url, text, free_preview_first, is_private }
   const [busy, setBusy] = useState(false);
   const [coverBusy, setCoverBusy] = useState(false);
+  const [lmsFor, setLmsFor] = useState(null); // lesson whose learning settings (section, resources, quiz) are open
+  const [sectionsOpen, setSectionsOpen] = useState(false);
   const lc = "w-full rounded-2xl border border-[#E5E6DF] px-4 py-2.5 text-[14px] focus:outline-none focus:ring-2 focus:ring-[#B25A45]";
 
   const uploadCover = async (file) => {
@@ -122,6 +125,14 @@ function LessonsEditor({ programId }) {
     try { await api.post(`/admin/programs/${programId}/lessons/reorder`, { lesson_ids: arr.map((l) => l.id) }); }
     catch { toast.error("Reorder failed"); load(); }
   };
+
+  // ---- Learning (LMS) settings for one lesson / the course outline ----
+  if (lmsFor) {
+    return <LessonExtrasEditor lessonId={lmsFor.id} lessonTitle={lmsFor.video?.title} onClose={() => setLmsFor(null)} onSaved={load} />;
+  }
+  if (sectionsOpen && lessons?.length) {
+    return <SectionsEditor programId={programId} lessons={lessons} onClose={() => setSectionsOpen(false)} onSaved={load} />;
+  }
 
   // ---- Bulk auto-chapters form ----
   if (bulk) {
@@ -239,7 +250,8 @@ function LessonsEditor({ programId }) {
     <div className="space-y-3" data-testid="lessons-editor">
       <div className="flex items-center justify-between">
         <div className="eyebrow">Lessons {lessons ? `(${lessons.length})` : ""}</div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
+          {lessons?.length > 0 && <button onClick={() => setSectionsOpen(true)} data-testid="lesson-sections" className="pill pill-ghost !py-1.5 !px-3 !text-xs"><BookOpen className="h-3.5 w-3.5" /> Sections</button>}
           <button onClick={openBulk} data-testid="lesson-bulk" className="pill pill-ghost !py-1.5 !px-3 !text-xs"><ListPlus className="h-3.5 w-3.5" /> Auto chapters</button>
           <button onClick={openNew} data-testid="lesson-new" className="pill pill-primary !py-1.5 !px-3 !text-xs"><Plus className="h-3.5 w-3.5" /> Add lesson</button>
         </div>
@@ -272,8 +284,12 @@ function LessonsEditor({ programId }) {
                     {seg && <span className="inline-flex items-center gap-1"><Clock className="h-3 w-3" /> {seg}</span>}
                     {l.is_free_preview && <span className="uppercase tracking-widest text-[9px] font-bold text-[#839682]">Free</span>}
                     {l.video?.is_private && <span className="inline-flex items-center gap-1 uppercase tracking-widest text-[9px] font-bold text-[#6B7269]"><EyeOff className="h-3 w-3" /> Unlisted</span>}
+                    {l.section && <span data-testid={`lesson-section-badge-${l.id}`} className="rounded-full bg-[#F2F2EC] px-2 py-0.5 text-[10px] font-semibold text-[#545E56] truncate max-w-[140px]">{l.section}</span>}
+                    {l.quiz?.questions?.length > 0 && <span className="text-[10px] font-bold uppercase tracking-widest text-[#8A6D3B]">Quiz · {l.quiz.questions.length}</span>}
+                    {l.resources?.length > 0 && <span className="text-[10px] font-semibold text-[#6B7269]">{l.resources.length} file(s)</span>}
                   </div>
                 </div>
+                <button onClick={() => setLmsFor(l)} data-testid={`lesson-lms-${l.id}`} className="pill pill-ghost !py-1.5 !px-3 !text-xs shrink-0">Learning</button>
                 <button onClick={() => openEdit(l)} data-testid={`lesson-edit-${l.id}`} className="pill pill-ghost !py-1.5 !px-3 !text-xs shrink-0">Edit</button>
                 <button onClick={() => del(l)} data-testid={`lesson-delete-${l.id}`} className="text-[#B25A45] hover:text-[#8f4436] shrink-0"><Trash2 className="h-4 w-4" /></button>
               </li>
