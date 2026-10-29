@@ -13,7 +13,7 @@ export default function PageHeader({ title, eyebrow, action, back = false, testI
   const native = isNativeApp();
   const hasHistory = location.key !== "default";
   // In the app there is no web landing page: "home" is the member home (or sign-in).
-  const homePath = native ? (user ? "/home" : "/login") : "/";
+  const homePath = native ? (user ? "/home" : "/") : "/";
   // Opened straight from a deep link / app launch with nothing to go back to.
   const showBack = back && (hasHistory || !native || location.pathname !== homePath);
 

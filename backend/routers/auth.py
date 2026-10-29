@@ -205,14 +205,24 @@ async def forgot_password(payload: ForgotPassword):
 
 
 @api.post("/auth/reset-password")
-async def reset_password(payload: PasswordReset):
+async def reset_password(payload: PasswordReset, response: Response):
     sha = sha256_hex(payload.token)
     rec = await db.password_reset_tokens.find_one({"token_sha": sha, "used": False})
     if not rec or datetime.fromisoformat(rec["expires_at"]) < now_utc():
         raise HTTPException(400, "Invalid or expired token")
+    if len(payload.new_password or "") < 8:
+        raise HTTPException(422, "Password must be at least 8 characters.")
+    claimed = await db.password_reset_tokens.update_one({"id": rec["id"], "used": False}, {"$set": {"used": True}})
+    if not claimed.modified_count:
+        raise HTTPException(400, "This link has already been used.")
     await db.users.update_one({"id": rec["user_id"]}, {"$set": {"password_hash": hash_password(payload.new_password)}})
-    await db.password_reset_tokens.update_one({"id": rec["id"]}, {"$set": {"used": True}})
-    return {"ok": True}
+    # Sign the member straight in (an invite from the admin or a reset link both prove the email).
+    user = await db.users.find_one({"id": rec["user_id"]}, {"_id": 0, "password_hash": 0})
+    if not user or user.get("active") is False:
+        return {"ok": True}
+    token = create_access_token(user["id"], user["email"], user["role"])
+    response.set_cookie("access_token", token, httponly=True, samesite="lax", max_age=7 * 86400, path="/")
+    return {"ok": True, "user": user, "token": token}
 
 
 @api.patch("/auth/profile")

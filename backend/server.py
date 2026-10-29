@@ -25,6 +25,8 @@ from routers import challenges  # noqa: F401
 from routers import access, availability  # noqa: F401
 from routers import analytics  # noqa: F401
 from routers import cms  # noqa: F401  (admin-managed SEO, pages, packages, team)
+from routers import members  # noqa: F401  (Admin → Students & access, My Yoga)
+import native_push  # noqa: F401  (phone notifications for the Android/iPhone apps)
 from routers import ios_commerce  # noqa: F401 — additive, same API and database
 
 # Set on startup so /api/health can surface why programs=0 (bad MONGO_URL / seed exception).
@@ -161,6 +163,15 @@ async def on_startup():
     await analytics.create_analytics_indexes()
     # New course purchases are time-bounded; existing purchase records stay intact.
     await db.programs.update_many({"price_model": "one_time"}, {"$set": {"price_model": "subscription"}})
+    await db.device_tokens.create_index("token", unique=True)
+    await db.device_tokens.create_index([("user_id", 1), ("active", 1)])
+    await db.member_audit.create_index([("user_id", 1), ("at", -1)])
+    await db.membership_picks.create_index([("user_id", 1), ("plan_id", 1)])
+    await db.payment_transactions.create_index([("payment_status", 1), ("created_at", -1)])
+    try:
+        await members.migrate_plan_access()
+    except Exception as e:
+        logger.warning(f"membership plan access migration skipped: {e}")
     asyncio.create_task(_reminder_loop())
     asyncio.create_task(account.account_deletion_worker())
 
@@ -205,6 +216,20 @@ async def _reminder_loop():
             await printful_nightly_sync_tick()
         except Exception as e:
             logger.warning(f"printful nightly sync tick failed: {e}")
+        try:
+            from routers.payments import reconcile_payments_tick
+            await reconcile_payments_tick()
+        except Exception as e:
+            logger.warning(f"payment re-check tick failed: {e}")
+        try:
+            await members.membership_reminders_tick()
+        except Exception as e:
+            logger.warning(f"membership reminder tick failed: {e}")
+        try:
+            from routers.printful import printful_status_sync_tick
+            await printful_status_sync_tick()
+        except Exception as e:
+            logger.warning(f"printful status sync tick failed: {e}")
         await asyncio.sleep(60)
 
 

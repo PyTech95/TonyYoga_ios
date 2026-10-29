@@ -20,7 +20,8 @@ export function CheckoutSuccess() {
   // Started inside the iOS / Android app, finished here in the phone's browser:
   // confirm the payment, then send the member back to the app instead of the website.
   const fromApp = params.get("app") === "1" && !isNativeApp();
-  const done = () => { if (!fromApp && !mobileReturn) setTimeout(() => nav("/profile", { replace: true }), 1500); };
+  // After paying, go straight to what was bought (a course page or My Yoga).
+  const done = (path) => { if (!fromApp && !mobileReturn) setTimeout(() => nav(path || "/my-yoga", { replace: true }), 1500); };
 
   useEffect(() => {
     let cancelled = false;
@@ -62,11 +63,11 @@ export function CheckoutSuccess() {
         if (data.payment_status === "paid") {
           setStatus("paid");
           toast.success("Welcome to Tony Yoga.");
-          done();
+          done(data.return_path);
           return;
         }
         if (data.status === "expired") { setStatus("expired"); return; }
-        if (tries >= 8) { setStatus("timeout"); return; }
+        if (tries >= 20) { setStatus("timeout"); return; }
         setTimeout(() => setTries((n) => n + 1), 2000);
       } catch { if (!cancelled) setStatus("error"); }
     };
@@ -92,14 +93,21 @@ export function CheckoutSuccess() {
             ) : fromApp ? (
               <p className="text-sm text-[#6B7269] mt-2" data-testid="checkout-return-to-app">Payment complete. You can close this page and go back to the Tony Yoga app — your purchase is ready there.</p>
             ) : (
-              <p className="text-sm text-[#6B7269] mt-2">Redirecting to your profile…</p>
+              <p className="text-sm text-[#6B7269] mt-2">Taking you to your purchase…</p>
             )}
           </div>
         )}
-        {(status === "error" || status === "bad" || status === "timeout") && (
+        {status === "timeout" && (
+          <>
+            <div className="serif text-xl mb-2">Still confirming your payment…</div>
+            <p className="text-sm text-[#6B7269]">Your bank is taking a little longer. Your purchase will appear in My Yoga automatically within a few minutes — you don't need to pay again.</p>
+            {mobileReturn ? <a className="pill pill-primary mt-6" href="com.tonyoga.app://checkout-return">Return to TonYoga</a> : <Link to="/my-yoga" className="pill pill-primary mt-6 inline-flex">Open My Yoga</Link>}
+          </>
+        )}
+        {(status === "error" || status === "bad") && (
           <>
             <div className="serif text-xl mb-2">Something didn't finish.</div>
-            <p className="text-sm text-[#6B7269]">If you were charged, contact tony@tonysanchezyoga.com.</p>
+            <p className="text-sm text-[#6B7269]">If you were charged, don't pay again — we check every payment automatically and your purchase will appear in My Yoga. Questions: tony@tonysanchezyoga.com.</p>
             {mobileReturn ? <a className="pill pill-ghost mt-6" href="com.tonyoga.app://checkout-return">Return to TonYoga</a> : <Link to="/memberships" className="pill pill-ghost mt-6 inline-flex">Back to memberships</Link>}
           </>
         )}

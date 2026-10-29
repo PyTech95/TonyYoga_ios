@@ -7,6 +7,7 @@ import { AppDownloadsSettings } from './AppDownloadsSettings';
 import { NotificationStatus } from './NotificationStatus';
 import { IntegrationStatus } from './IntegrationStatus';
 import { ReminderSettings } from './ReminderSettings';
+import { NativePushSettings } from './NativePushSettings';
 import { Field, Toggle, inputCls } from "./shared";
 
 function SettingsPane() {
@@ -263,6 +264,7 @@ function SettingsPane() {
       <AppDownloadsSettings />
       <NotificationStatus />
       <ReminderSettings />
+      <NativePushSettings />
       {/* -------- Payments / Stripe -------- */}
       <div className={card} data-testid="settings-payments-card">
         <div className="flex items-center justify-between">

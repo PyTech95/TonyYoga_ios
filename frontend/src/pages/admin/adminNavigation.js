@@ -24,7 +24,7 @@ export const ADMIN_GROUPS = [
     { key: "retreats", label: "Retreats", icon: MountainSnow },
   ] },
   { label: "Community", items: [
-    { key: "students", label: "Students & access", icon: GraduationCap },
+    { key: "students", label: "Students, access & payments", icon: GraduationCap },
     { key: "apps", label: "Applications", icon: ClipboardCheck },
     { key: "leads", label: "Quiz leads", icon: Sparkles },
     { key: "broadcast", label: "Broadcasts", icon: Mic },

@@ -1,7 +1,11 @@
 """Read-only provider checks. No test charge or meeting is created during setup."""
 import asyncio
 import httpx
+import os
 import stripe
+
+if os.environ.get("STRIPE_API_BASE"):  # local tests only
+    stripe.api_base = os.environ["STRIPE_API_BASE"]
 from fastapi import HTTPException
 from core import db, now_utc
 

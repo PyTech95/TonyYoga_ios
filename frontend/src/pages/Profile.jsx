@@ -13,7 +13,8 @@ import { checkoutContext, markExternalCheckout } from "@/lib/platform";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import PushToggle from "@/components/PushToggle";
-import { MyAccess } from "@/components/MyAccess";
+import MyYogaCard from "@/components/MyYogaCard";
+import NotificationSettings from "@/components/NotificationSettings";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
@@ -172,8 +173,8 @@ export default function Profile() {
           </div>
         </div>
 
-        {/* Bookings */}
-        <MyAccess />
+        {/* Everything the member has: membership, courses, classes, orders */}
+        <MyYogaCard />
         <section>
           <div className="eyebrow mb-3">Your bookings</div>
           {bookings === null ? <Spinner /> : bookings.length === 0 ? (
@@ -209,6 +210,7 @@ export default function Profile() {
 
         {/* Reminders */}
         <PushToggle />
+        <NotificationSettings />
 
         {/* Gift card / store credit */}
         {!isIOSApp() && (<section data-testid="gift-card-section" className="rounded-3xl bg-white border border-[#E5E6DF] p-5">

@@ -573,30 +573,108 @@ async def admin_order_fulfillment(order_id: str, request: Request):
     return res
 
 
+_PF_TO_ORDER = {"pending": "processing", "inprocess": "processing", "onhold": "processing", "partial": "shipped",
+                "fulfilled": "shipped", "canceled": "cancelled", "cancelled": "cancelled"}
+
+
+async def _apply_printful_order(local: dict, pf: dict, by: str = "printful"):
+    """Copy Printful's status and tracking onto our order and tell the customer when it ships."""
+    from routers.orders import set_order_status
+    pf_status = pf.get("status")
+    shipments = pf.get("shipments") or []
+    ship = shipments[-1] if shipments else {}
+    await db.orders.update_one({"id": local["id"]}, {"$set": {"printful_status": pf_status, "printful_synced_at": now_utc().isoformat(),
+                                                             "shipments": [{"carrier": s.get("carrier"), "service": s.get("service"),
+                                                                            "tracking_number": s.get("tracking_number"), "tracking_url": s.get("tracking_url"),
+                                                                            "shipped_at": s.get("shipped_at") or s.get("ship_date")} for s in shipments]}})
+    target = _PF_TO_ORDER.get(pf_status)
+    if pf_status == "failed":
+        await db.orders.update_one({"id": local["id"]}, {"$set": {"fulfillment_error": "Printful could not produce this order. Check it in Printful."}})
+        from routers.notifications import push_admins
+        await push_admins("Printful order failed", f"Order {local['id'][:8]} needs attention in Printful.", "/admin?tab=orders",
+                          dedupe_key=f"pf-failed:{local['id']}")
+        return
+    if not target or local.get("status") in ("delivered", "completed", "refunded"):
+        return
+    if target == "processing" and local.get("status") in ("shipped", "processing"):
+        return
+    if target == "shipped" and not ship.get("tracking_number") and local.get("status") == "shipped":
+        return
+    await set_order_status(local["id"], target, tracking_number=ship.get("tracking_number"), tracking_url=ship.get("tracking_url"),
+                           carrier=ship.get("carrier"), by=by)
+
+
+_last_status_sync = {"at": 0.0}
+
+
+async def printful_status_sync_tick(force: bool = False):
+    """Every 2 hours: ask Printful about orders in production (in case a webhook was missed)."""
+    import time
+    if not force and time.time() - _last_status_sync["at"] < 7200:
+        return
+    _last_status_sync["at"] = time.time()
+    if not await _resolve_token():
+        return
+    rows = await db.orders.find({"printful_order_id": {"$nin": [None, ""]}, "status": {"$in": ["paid", "processing", "fulfilled", "shipped"]},
+                                 "delivered_at": {"$exists": False}}, {"_id": 0}).to_list(200)
+    if not rows:
+        return
+    store_id = await _selected_store_id()
+    async with httpx.AsyncClient(timeout=30) as client:
+        for local in rows:
+            if local.get("status") == "shipped" and local.get("tracking_number"):
+                continue
+            try:
+                pf = await _pf_get(client, f"/orders/{local['printful_order_id']}", store_id=store_id)
+                await _apply_printful_order(local, pf, by="printful sync")
+            except Exception as e:
+                logger.warning(f"[printful] status sync failed for {local['id']}: {str(e)[:160]}")
+
+
+@api.post("/admin/printful/orders/sync")
+async def admin_printful_status_sync(request: Request):
+    await require_role(request, ["admin"])
+    await printful_status_sync_tick(force=True)
+    return {"ok": True}
+
+
+@api.post("/admin/printful/webhook/register")
+async def admin_register_printful_webhook(request: Request):
+    """Tell Printful to send shipping updates to this website."""
+    await require_role(request, ["admin"])
+    if not await _resolve_token():
+        raise HTTPException(400, "Printful is not connected. Paste your API token in Admin → Print Media.")
+    base = (os.environ.get("PUBLIC_API_URL") or os.environ.get("FRONTEND_URL") or "").rstrip("/")
+    if not base.startswith("https://"):
+        raise HTTPException(409, "The website address (FRONTEND_URL) must be an https:// address for Printful to reach it.")
+    url = f"{base}/api/webhook/printful"
+    store_id = await _selected_store_id()
+    async with httpx.AsyncClient(timeout=30) as client:
+        res = await _pf_post(client, "/webhooks", json={"url": url, "types": ["package_shipped", "package_returned", "order_failed", "order_canceled", "order_put_hold", "order_updated"]}, store_id=store_id)
+    await db.app_settings.update_one({"key": "printful_sync"}, {"$set": {"webhook_url": url, "webhook_registered_at": now_utc().isoformat()}}, upsert=True)
+    return {"ok": True, "url": url, "types": (res or {}).get("types")}
+
+
 @api.post("/webhook/printful")
 async def printful_webhook(request: Request):
-    """Printful webhook — package_shipped delivers tracking. Idempotent."""
+    """Printful webhook (shipping, failures, cancellations). The order is always re-read from
+    Printful before anything changes, so a forged call can't mark an order shipped. Idempotent."""
     try:
         event = await request.json()
     except Exception:
         raise HTTPException(400, "Invalid JSON")
-    if event.get("type") == "package_shipped":
+    etype = event.get("type")
+    if etype in ("package_shipped", "package_returned", "order_failed", "order_canceled", "order_put_hold", "order_updated"):
         data = event.get("data", {}) or {}
         pf_id = (data.get("order", {}) or {}).get("id")
-        local = await db.orders.find_one({"printful_order_id": pf_id}) if pf_id else None
+        local = await db.orders.find_one({"printful_order_id": pf_id}, {"_id": 0}) if pf_id else None
         if local:
             store_id = await _selected_store_id()
             async with httpx.AsyncClient(timeout=30) as client:
                 verified = await _pf_get(client, f"/orders/{int(pf_id)}", store_id=store_id)
-            shipments = verified.get("shipments") or []
-            if not shipments:
-                return {"received": True}
-            ship = shipments[-1]
-            await db.orders.update_one(
-                {"printful_order_id": pf_id},
-                {"$set": {"status": "shipped", "printful_status": "shipped",
-                          "tracking_number": ship.get("tracking_number"),
-                          "tracking_url": ship.get("tracking_url"),
-                          "shipped_at": now_utc().isoformat()}},
-            )
+            await _apply_printful_order(local, verified, by=f"printful webhook ({etype})")
+            if etype == "package_returned":
+                from routers.notifications import push_admins
+                await push_admins("Parcel returned", f"A Printful parcel for order {local['id'][:8]} was returned.", "/admin?tab=orders",
+                                  dedupe_key=f"pf-returned:{local['id']}")
     return {"received": True}

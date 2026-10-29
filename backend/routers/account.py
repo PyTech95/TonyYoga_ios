@@ -28,6 +28,7 @@ _PERSONAL_COLLECTIONS = [
     "practice_streaks", "challenge_enrollments", "free_class_grants", "pass_usages",
     "user_notifications", "assistant_requests", "assistant_usage", "chatbot_sessions",
     "ios_purchase_intents", "teacher_training_registrations",
+    "device_tokens", "membership_picks", "member_audit",
 ]
 
 

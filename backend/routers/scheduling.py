@@ -402,12 +402,27 @@ async def _book_class(payload, user):
 
     pricing = await class_pricing(instance)
     access = await class_access(user["id"], instance)
+    if access and access.get("source") == "membership" and access.get("live_classes_per_week") and pricing["mode"] != "free":
+        # Plans like Essential include a number of live classes per week (Monday–Sunday of the class).
+        start = parse_dt(instance["start_time"])
+        week_start = (start - timedelta(days=start.weekday())).replace(hour=0, minute=0, second=0, microsecond=0)
+        week_end = week_start + timedelta(days=7)
+        mine = await db.bookings.find({"user_id": user["id"], "access_source": "membership", "status": {"$in": ["confirmed", "waitlist", "attended"]}},
+                                      {"_id": 0, "class_instance_id": 1}).to_list(500)
+        used = 0
+        if mine:
+            for c in await db.class_instances.find({"id": {"$in": [b["class_instance_id"] for b in mine]}}, {"_id": 0, "start_time": 1}).to_list(500):
+                cs = parse_dt(c.get("start_time"))
+                if cs and week_start <= cs < week_end:
+                    used += 1
+        if used >= access["live_classes_per_week"]:
+            access = None  # this week's included classes are used; a class credit or purchase still works
     pass_id = None
     source = access["source"] if access else "free"
     if pricing["mode"] != "free" and not access:
         pack = await db.class_passes.find_one_and_update({"user_id": user["id"], "active": True, "remaining": {"$gt": 0}}, {"$inc": {"remaining": -1}}, projection={"_id": 0})
         if not pack:
-            raise HTTPException(402, "Buy this class or a subscription covering its scheduled time.")
+            raise HTTPException(402, "Buy this class, use a class credit, or choose a membership that covers this week's classes.")
         pass_id, source = pack["id"], "pass"
 
     # Atomic capacity claim: only increments if bookings_count < capacity

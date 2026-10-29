@@ -1,3 +1,4 @@
+import { isNativeApp } from "@/lib/platform";
 import { isIOSApp } from "@/lib/iosPlatform";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
@@ -20,7 +21,8 @@ export default function AssistantWidget() {
   const [input, setInput] = useState(''), [sending, setSending] = useState(false), [error, setError] = useState('');
   const [audioBlocked, setAudioBlocked] = useState(false);
   const scroll = useRef(null), request = useRef(null), intro = useRef(null), panel = useRef(null);
-  const visible = publicRoute(pathname), greeted = useRef(false), openRef = useRef(false);
+  // In the app, "/" is the welcome screen with its own buttons; keep it clean.
+  const visible = publicRoute(pathname) && !(pathname === '/' && isNativeApp()), greeted = useRef(false), openRef = useRef(false);
   const greeting = cfg?.greeting || "I'm Tony's assistant. How can I help you?";
   const onVoiceReply = useCallback(data => setMessages(old => [...old,
     { role: 'visitor', text: data.transcript }, { role: 'assistant', text: data.reply, links: data.links, audio_url: data.audio_url }]), []);

@@ -31,6 +31,8 @@ SECRET_FIELDS = {
     "openai_api_key",
     "gemini_api_key",
     "printful_token",
+    "fcm_service_account_json",
+    "apns_key_p8",
 }
 
 # Map of setting -> env var to fall back on when the DB value is empty.
@@ -191,6 +193,17 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # New-lead WhatsApp alert to the owner (requires WhatsApp/Twilio configured below).
     "lead_alert_enabled": True,
     "lead_alert_whatsapp": "",            # owner number for alerts; falls back to social_whatsapp
+    # ---- Phone app push (Android via Firebase Cloud Messaging, iPhone via Apple Push) ----
+    "native_push_enabled": True,
+    "fcm_service_account_json": "",       # Firebase → Project settings → Service accounts → private key JSON
+    "apns_key_p8": "",                    # Apple Developer → Keys → APNs key (.p8 contents)
+    "apns_key_id": "",
+    "apns_team_id": "",
+    "apns_bundle_id": "com.tonyoga.app",
+    "apns_sandbox": False,                # True only for Xcode debug builds
+    # ---- Member care ----
+    "membership_reminder_days": 3,        # remind members this many days before access ends (0 = off)
+    "auto_reconcile_payments": True,      # re-check unconfirmed card/PayPal payments every few minutes
 }
 
 # Fields safe to expose to unauthenticated clients (frontend bootstrapping).
@@ -449,6 +462,25 @@ async def admin_patch_settings(payload: Dict[str, Any], request: Request):
         v = payload.get(k)
         if isinstance(v, str) and v and v != "__clear__" and not _is_masked(v) and not v.startswith(pfx):
             raise HTTPException(400, f"{k} must start with '{pfx}'")
+    if payload.get("fcm_service_account_json") not in (None, "", "__clear__") and not _is_masked(payload.get("fcm_service_account_json")):
+        import json as _json
+        try:
+            sa = _json.loads(payload["fcm_service_account_json"])
+            assert sa.get("client_email") and sa.get("private_key") and sa.get("project_id")
+        except Exception:
+            raise HTTPException(422, "Paste the whole Firebase service-account JSON file (it has project_id, client_email and private_key).")
+    if payload.get("apns_key_p8") not in (None, "", "__clear__") and not _is_masked(payload.get("apns_key_p8")):
+        if "BEGIN PRIVATE KEY" not in str(payload["apns_key_p8"]):
+            raise HTTPException(422, "Paste the whole Apple .p8 key, including the BEGIN/END PRIVATE KEY lines.")
+    for k, n in (("apns_key_id", 10), ("apns_team_id", 10)):
+        v = payload.get(k)
+        if v not in (None, "") and not (isinstance(v, str) and len(v.strip()) == n and v.strip().isalnum()):
+            raise HTTPException(422, f"{k.replace('_', ' ').replace('apns', 'Apple')} must be {n} letters/numbers.")
+    if "membership_reminder_days" in payload:
+        try:
+            payload["membership_reminder_days"] = max(0, min(30, int(payload["membership_reminder_days"])))
+        except (TypeError, ValueError):
+            raise HTTPException(422, "Reminder days must be a number from 0 to 30.")
     if "assistant_provider" in payload and payload["assistant_provider"] not in ("auto", "openai", "gemini"):
         raise HTTPException(422, "AI provider must be Automatic, OpenAI or Gemini.")
     for k in ("assistant_gemini_model", "assistant_gemini_tts_model"):
