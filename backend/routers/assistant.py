@@ -172,6 +172,8 @@ async def admin_assistant_test(request: Request):
         out.update(chat_ok=True, reply=reply.strip()[:300])
     except HTTPException as exc:
         out['error'] = exc.detail
+        if getattr(exc, 'google', ''):
+            out['google'] = exc.google  # Google's own reason (never contains the key); admins only
         return out
     except Exception as exc:
         logger.warning('Assistant test failed (%s)', type(exc).__name__)
@@ -184,6 +186,8 @@ async def admin_assistant_test(request: Request):
         out.update(voice_ok=True, mime=await audio_mime())
     except HTTPException as exc:
         out['voice_error'] = exc.detail
+        if getattr(exc, 'google', ''):
+            out['voice_google'] = exc.google
     return out
 
 

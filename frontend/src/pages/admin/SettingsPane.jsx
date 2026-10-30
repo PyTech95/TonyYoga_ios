@@ -708,9 +708,13 @@ function AssistantCard({ form, set, inputCls, card, clearSecret }) {
                 {check.voice_ok
                   ? <p className="text-[#3E7C57]">✓ Voice works — you should hear a short greeting.</p>
                   : <p className="text-[#8A6D3B]">Voice: {check.voice_error || "not available"}</p>}
+                {check.voice_google && <p className="text-[11px] text-[#6B7269] break-words" data-testid="settings-assistant-test-google">Google says: {check.voice_google}</p>}
               </>
             ) : (
-              <p className="font-semibold text-[#B25A45]">✗ {check.error || "The assistant did not answer."}</p>
+              <>
+                <p className="font-semibold text-[#B25A45]">✗ {check.error || "The assistant did not answer."}</p>
+                {check.google && <p className="text-[11px] text-[#6B7269] break-words" data-testid="settings-assistant-test-google">Google says: {check.google}</p>}
+              </>
             )}
           </div>
         )}
