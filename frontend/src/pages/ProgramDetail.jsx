@@ -15,6 +15,7 @@ import HeartButton from "@/components/HeartButton";
 import PaymentButtons from "@/components/PaymentButtons";
 import RelatedProducts from "@/components/RelatedProducts";
 import BundleOffer from "@/components/BundleOffer";
+import SafeYouTube from "@/components/SafeYouTube";
 import { AccessTermSummary } from "@/components/AccessTerm";
 import { useSeo, SITE_URL } from "@/lib/seo";
 import { courseJsonLd } from "@/seo/seoData.mjs";
@@ -265,7 +266,6 @@ export default function ProgramDetail() {
 }
 
 function DemoVideo({ demo, hasAccess }) {
-  const [playing, setPlaying] = useState(false);
   const yid = demo?.youtube_id;
   const start = demo?.start_seconds || 0;
 
@@ -278,46 +278,15 @@ function DemoVideo({ demo, hasAccess }) {
     );
   }
 
-  const embed = `https://www.youtube.com/embed/${yid}?start=${start}&autoplay=1&rel=0&modestbranding=1`;
-  const poster = `https://img.youtube.com/vi/${yid}/hqdefault.jpg`;
-
   return (
     <div data-testid="demo-video" className="space-y-2">
-      <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-lg">
-        {playing ? (
-          <iframe
-            title="Course demo"
-            src={embed}
-            data-testid="demo-video-iframe"
-            className="absolute inset-0 h-full w-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        ) : (
-          <button
-            onClick={() => setPlaying(true)}
-            data-testid="demo-video-play"
-            className="group absolute inset-0 h-full w-full"
-          >
-            <img src={poster} alt="Course demo" className="absolute inset-0 h-full w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/10 to-transparent" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-16 w-16 rounded-full bg-white/95 flex items-center justify-center group-hover:scale-110 transition shadow-xl">
-                <Play className="h-7 w-7 text-[#B25A45] ml-1" />
-              </div>
-            </div>
-            <div className="absolute bottom-3 left-4 text-white text-xs font-bold uppercase tracking-widest bg-black/40 rounded-full px-3 py-1">
-              {hasAccess ? "Course intro" : "Watch the free demo"}
-            </div>
-          </button>
-        )}
-      </div>
+      <SafeYouTube videoId={yid} start={start} title="Course demo" badge={hasAccess ? "Course intro" : "Watch the free demo"}
+        testId="demo-video-player" className="shadow-lg" />
     </div>
   );
 }
 
 function MainCourseVideo({ video, locked }) {
-  const [playing, setPlaying] = useState(false);
   const yid = video?.youtube_id;
   // Hidden entirely for logged-out / no-access-without-config users.
   if (!yid && !locked) return null;
@@ -339,36 +308,11 @@ function MainCourseVideo({ video, locked }) {
     );
   }
 
-  const embed = `https://www.youtube.com/embed/${yid}?autoplay=1&rel=0&modestbranding=1`;
-  const poster = `https://img.youtube.com/vi/${yid}/maxresdefault.jpg`;
   return (
     <div data-testid="main-course-video" className="space-y-2">
       <div className="eyebrow !text-[#B25A45]">Full course video</div>
-      <div className="relative aspect-video rounded-3xl overflow-hidden bg-black shadow-xl ring-1 ring-[#B25A45]/20">
-        {playing ? (
-          <iframe
-            title="Full course video"
-            src={embed}
-            data-testid="main-course-iframe"
-            className="absolute inset-0 h-full w-full"
-            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-            allowFullScreen
-          />
-        ) : (
-          <button onClick={() => setPlaying(true)} data-testid="main-course-play" className="group absolute inset-0 h-full w-full">
-            <img src={poster} alt="Full course" className="absolute inset-0 h-full w-full object-cover" onError={(e) => { e.currentTarget.src = `https://img.youtube.com/vi/${yid}/hqdefault.jpg`; }} />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="h-16 w-16 rounded-full bg-white/95 flex items-center justify-center group-hover:scale-110 transition shadow-xl">
-                <Play className="h-7 w-7 text-[#B25A45] ml-1" />
-              </div>
-            </div>
-            <div className="absolute bottom-3 left-4 text-white text-xs font-bold uppercase tracking-widest bg-[#B25A45]/80 rounded-full px-3 py-1">
-              Full course · unlocked
-            </div>
-          </button>
-        )}
-      </div>
+      <SafeYouTube videoId={yid} title="Full course video" badge="Full course · unlocked" testId="main-course-player"
+        poster={`https://img.youtube.com/vi/${yid}/maxresdefault.jpg`} className="shadow-xl ring-1 ring-[#B25A45]/20" />
     </div>
   );
 }

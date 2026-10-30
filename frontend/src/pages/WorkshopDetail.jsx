@@ -6,7 +6,8 @@ import { toast } from "sonner";
 import { Calendar, MapPin, Users, Utensils, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { isYouTube, youTubeEmbed } from "@/lib/youtube";
+import { isYouTube } from "@/lib/youtube";
+import SafeYouTube from "@/components/SafeYouTube";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import HeartButton from "@/components/HeartButton";
@@ -53,16 +54,17 @@ function RetreatGallery({ images }) {
 
 function StudentVideo({ url }) {
   if (!url) return null;
-  const embed = isYouTube(url) ? youTubeEmbed(url) : url;
   return (
     <div data-testid="workshop-student-video">
       <div className="eyebrow mb-2">Hear from our students</div>
-      <div className="relative rounded-2xl overflow-hidden bg-black aspect-video">
-        <iframe src={embed} title="Student testimonial" loading="lazy"
-          className="absolute inset-0 h-full w-full"
-          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-          allowFullScreen />
-      </div>
+      {isYouTube(url) ? <SafeYouTube url={url} title="Student testimonial" rounded="rounded-2xl" testId="workshop-video" /> : (
+        <div className="relative rounded-2xl overflow-hidden bg-black aspect-video">
+          <iframe src={url} title="Student testimonial" loading="lazy"
+            className="absolute inset-0 h-full w-full"
+            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+            allowFullScreen />
+        </div>
+      )}
     </div>
   );
 }

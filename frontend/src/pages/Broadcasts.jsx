@@ -3,16 +3,13 @@ import { Mic, Video as VideoIcon, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
-import { isYouTube, youTubeEmbed, youTubeThumb } from "@/lib/youtube";
+import { isYouTube, youTubeThumb } from "@/lib/youtube";
+import SafeYouTube from "@/components/SafeYouTube";
 
 function EpisodePlayer({ ep }) {
   if (ep.media_type === "video") {
     if (isYouTube(ep.media_url)) {
-      return (
-        <div className="rounded-2xl overflow-hidden bg-black aspect-video" data-testid={`bc-player-${ep.id}`}>
-          <iframe title={ep.title} src={youTubeEmbed(ep.media_url)} className="h-full w-full" allow="accelerometer; autoplay; encrypted-media; picture-in-picture" allowFullScreen />
-        </div>
-      );
+      return <SafeYouTube url={ep.media_url} title={ep.title} rounded="rounded-2xl" poster={ep.cover_image || undefined} testId={`bc-player-${ep.id}`} />;
     }
     return (
       <video controls playsInline className="w-full rounded-2xl bg-black aspect-video" poster={ep.cover_image} src={ep.media_url} data-testid={`bc-player-${ep.id}`} />

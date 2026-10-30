@@ -23,7 +23,7 @@ jobs:
 
     env:
       APP_BUNDLE_ID: com.tonyoga.app
-      APP_VERSION: "1.1.0"
+      APP_VERSION: "1.2.0"
       TEAM_ID: B38XS68W4W
       SCHEME: App
       PROJECT_PATH: ios/App/App.xcodeproj

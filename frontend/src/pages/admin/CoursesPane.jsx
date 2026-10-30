@@ -416,7 +416,7 @@ function CoursesPane() {
             {form.demo_video_url && !parseYouTubeId(form.demo_video_url) && <div className="text-xs text-[#B25A45] mt-1">Not a recognized YouTube link.</div>}
           </Field>
 
-          <Field label="Full course video (YouTube)" hint="The complete guided course. Shows right below the demo — LOCKED for logged-in visitors without access and HIDDEN entirely for logged-out visitors. Only subscribed / enrolled students (and staff) can play it.">
+          <Field label="Full course video (YouTube)" hint="The complete guided course. Shows right below the demo — LOCKED for logged-in visitors without access and HIDDEN entirely for logged-out visitors. Only subscribed / enrolled students (and staff) can play it. On YouTube set the video to Unlisted (not Private) and allow embedding; it plays inside the site and never links out to YouTube.">
             <input data-testid="course-main-video" className={inputCls2} value={form.main_video_url} onChange={(e) => set("main_video_url", e.target.value)} placeholder="https://www.youtube.com/watch?v=…" />
             {form.main_video_url && !parseYouTubeId(form.main_video_url) && <div className="text-xs text-[#B25A45] mt-1">Not a recognized YouTube link.</div>}
           </Field>

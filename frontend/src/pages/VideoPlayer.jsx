@@ -8,21 +8,7 @@ import Spinner from "@/components/Spinner";
 import RelatedProducts from "@/components/RelatedProducts";
 import LessonExtras from "@/components/LessonExtras";
 import { isYouTube, parseYouTubeId, secToMMSS } from "@/lib/youtube";
-
-// Lazy-load the YouTube IFrame Player API once.
-let ytApiPromise = null;
-function loadYT() {
-  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
-  if (ytApiPromise) return ytApiPromise;
-  ytApiPromise = new Promise((resolve) => {
-    const tag = document.createElement("script");
-    tag.src = "https://www.youtube.com/iframe_api";
-    document.head.appendChild(tag);
-    const prev = window.onYouTubeIframeAPIReady;
-    window.onYouTubeIframeAPIReady = () => { if (prev) prev(); resolve(window.YT); };
-  });
-  return ytApiPromise;
-}
+import { loadYT, LOCKED_PLAYER_VARS, ytErrorText } from "@/lib/ytApi";
 
 export default function VideoPlayer() {
   const { id } = useParams();
@@ -42,6 +28,9 @@ export default function VideoPlayer() {
   const [resumeDismissed, setResumeDismissed] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState([]);
   const [practisedToday, setPractisedToday] = useState(0);
+  const [ytError, setYtError] = useState(null);   // YouTube refused the video (private, embedding off…)
+  const [blocked, setBlocked] = useState(false);  // browser refused our play button (iPhone Safari)
+  const blockTimer = useRef(null);
 
   // A small community signal: how many people practised this class today (no names).
   useEffect(() => {
@@ -126,20 +115,23 @@ export default function VideoPlayer() {
   useEffect(() => {
     if (!ready || !v || !v.is_unlocked || !v.video_url || !isYouTube(v.video_url)) return;
     let cancelled = false;
+    const host = ytHostRef.current;
     const start = v.start_seconds || 0;
     const end = v.end_seconds || undefined;
     const beginAt = (resume && resume > start + 2 && (!end || resume < end - 2)) ? Math.floor(resume) : start;
 
     loadYT().then((YT) => {
       if (cancelled || !ytHostRef.current) return;
-      playerRef.current = new YT.Player(ytHostRef.current, {
+      // A fresh mount every time: YouTube replaces the element it is given with its iframe, and a
+      // destroyed player's iframe is gone, so re-using one element (e.g. when the page reloads the
+      // video after sign-in) left a dead player that ignored every click.
+      ytHostRef.current.replaceChildren();
+      const mount = document.createElement("div");
+      ytHostRef.current.appendChild(mount);
+      playerRef.current = new YT.Player(mount, {
         host: "https://www.youtube-nocookie.com",
         videoId: parseYouTubeId(v.video_url),
-        playerVars: {
-          start: Math.floor(beginAt),
-          controls: 0, disablekb: 1, fs: 0, rel: 0,
-          modestbranding: 1, playsinline: 1, iv_load_policy: 3, cc_load_policy: 1,
-        },
+        playerVars: { ...LOCKED_PLAYER_VARS, start: Math.floor(beginAt), cc_load_policy: 1, origin: window.location.origin },
         events: {
           onReady: () => {
             // Seek to the clip start and pause so the first visible frame IS the
@@ -154,7 +146,7 @@ export default function VideoPlayer() {
             const P = window.YT.PlayerState;
             clearInterval(timerRef.current);
             if (e.data === P.PLAYING) {
-              setPlaying(true);
+              setPlaying(true); setBlocked(false); clearTimeout(blockTimer.current);
               // Poll every 400ms to (a) save progress, (b) drive the clip bar, and
               // (c) hard-enforce the segment [start,end] — YouTube's own controls are
               // hidden and its `end` param is unreliable, so we lock playback here.
@@ -186,19 +178,23 @@ export default function VideoPlayer() {
             } else if (e.data === P.ENDED) {
               setPlaying(false);
               try { saveProgress(end || playerRef.current.getCurrentTime(), true); } catch { /* noop */ }
+              // Back to the start, paused: YouTube's end screen (other videos) never shows.
+              try { playerRef.current.seekTo(start, true); playerRef.current.pauseVideo(); } catch { /* noop */ }
               completeRef.current();
             }
           },
+          onError: (e) => { clearInterval(timerRef.current); setPlaying(false); setYtError(e?.data ?? -1); },
         },
       });
     });
 
     return () => {
       cancelled = true;
-      clearInterval(timerRef.current);
+      clearInterval(timerRef.current); clearTimeout(blockTimer.current);
       try { if (playerRef.current?.getCurrentTime) saveProgress(playerRef.current.getCurrentTime(), false); } catch { /* noop */ }
       try { playerRef.current?.destroy?.(); } catch { /* noop */ }
       playerRef.current = null;
+      try { host?.replaceChildren(); } catch { /* noop */ }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ready, v]);
@@ -215,6 +211,18 @@ export default function VideoPlayer() {
   const togglePlay = () => {
     if (youtube && playerRef.current) {
       try { playing ? playerRef.current.pauseVideo() : playerRef.current.playVideo(); } catch { /* noop */ }
+      if (!playing) {
+        // iPhone Safari may ignore a play request that doesn't come from a tap inside YouTube's
+        // player: then let a tap through in the middle (YouTube's own play button) only.
+        clearTimeout(blockTimer.current);
+        blockTimer.current = setTimeout(() => {
+          try {
+            const st = playerRef.current?.getPlayerState?.();
+            const P = window.YT?.PlayerState || {};
+            if (st !== P.PLAYING && st !== P.BUFFERING) setBlocked(true);
+          } catch { /* noop */ }
+        }, 1800);
+      }
     } else if (videoRef.current) {
       try {
         if (videoRef.current.paused) { const p = videoRef.current.play(); if (p && p.catch) p.catch(() => {}); }
@@ -319,13 +327,29 @@ export default function VideoPlayer() {
                   with its <iframe>, so it must be the lone child of a stable wrapper
                   that React never reorders. If overlays were siblings of this node,
                   overlay re-renders would crash with insertBefore on a detached node. */}
-              <div className="pointer-events-none absolute inset-0">
-                <div ref={ytHostRef} className="h-full w-full" />
+              <div className={`${blocked && !playing ? "" : "pointer-events-none "}absolute inset-0`} data-testid="video-yt-frame">
+                {/* Filled by the effect (never by React): YouTube's iframe lives here. */}
+                <div ref={ytHostRef} className="h-full w-full [&>*]:h-full [&>*]:w-full" />
               </div>
               <ClipChip />
+              {ytError != null && (
+                <div className="absolute inset-0 z-[8] flex flex-col items-center justify-center gap-2 bg-[#1C221F] px-6 text-center text-white" role="alert" data-testid="video-yt-error">
+                  <Lock className="h-6 w-6 text-[#E4A788]" />
+                  <p className="text-sm max-w-sm">{ytErrorText(ytError, user?.role === "admin")}</p>
+                </div>
+              )}
+              {blocked && !playing && (
+                <>
+                  <div className="absolute inset-x-0 top-0 z-[6] h-[30%]" onClick={togglePlay} />
+                  <div className="absolute inset-x-0 bottom-0 z-[6] h-[28%]" onClick={togglePlay} />
+                  <div className="absolute left-0 top-[30%] bottom-[28%] z-[6] w-[30%]" onClick={togglePlay} />
+                  <div className="absolute right-0 top-[30%] bottom-[28%] z-[6] w-[30%]" onClick={togglePlay} />
+                  <div className="pointer-events-none absolute inset-x-0 bottom-[30%] z-[6] text-center text-[12px] font-semibold text-white drop-shadow" data-testid="video-tap-hint">Tap the play button to start</div>
+                </>
+              )}
               {/* Custom control layer: hides YouTube's native scrubber/branding and
                   locks interaction to our clip. Click toggles play/pause. */}
-              <button
+              {!(blocked && !playing) && <button
                 type="button"
                 onClick={togglePlay}
                 data-testid="yt-toggle-play"
@@ -339,7 +363,7 @@ export default function VideoPlayer() {
                 >
                   {playing ? <Pause className="h-7 w-7" fill="currentColor" /> : <Play className="h-7 w-7 translate-x-0.5" fill="currentColor" />}
                 </span>
-              </button>
+              </button>}
               <BottomBar />
             </div>
           ) : (
