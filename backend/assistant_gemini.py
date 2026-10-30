@@ -51,16 +51,37 @@ def _headers(key):
     return {"x-goog-api-key": key, "Content-Type": "application/json"}
 
 
-def _thinking(model):
-    """Keep reasoning short: answers are 1–3 spoken sentences and must arrive quickly."""
+def _thinking_levels(model):
+    """Shortest reasoning first: answers are short and must start quickly. Models that reject a
+    level are asked again with the next one, and finally with no setting at all."""
     m = model.lower()
     if "tts" in m:
-        return None
-    if "lite" in m:
-        return {"thinkingLevel": "minimal"}
+        return []
+    if model in _LEVEL_OK:
+        return [_LEVEL_OK[model]]
+    if "flash" in m or "lite" in m:
+        return ["minimal", "low", None]
     if m.startswith(("gemini-3", "gemini-4")):
-        return {"thinkingLevel": "low"}
-    return None
+        return ["low", None]
+    return [None]
+
+
+def _thinking(model):
+    levels = _thinking_levels(model)
+    return {"thinkingLevel": levels[0]} if levels and levels[0] else None
+
+
+_LEVEL_OK: dict = {}   # model -> thinking level it accepted (None = no setting)
+_client = None
+
+
+def _http():
+    """One shared HTTPS client (keeps the connection to Google open between answers)."""
+    global _client
+    if _client is None or _client.is_closed:
+        _client = httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0),
+                                    limits=httpx.Limits(max_keepalive_connections=10, keepalive_expiry=120))
+    return _client
 
 
 class GeminiError(HTTPException):
@@ -149,61 +170,64 @@ def _texts(payload):
     return "".join(out)
 
 
-async def stream_chat(system, history, model):
+async def stream_chat(system, history, model, max_tokens=None):
     """Yield answer text as it arrives. history: [{'role': 'user'|'assistant', 'content': str}]."""
     key = await gemini_key()
     contents = [{"role": "model" if m["role"] == "assistant" else "user", "parts": [{"text": m["content"]}]}
                 for m in history if m.get("content")]
     body = {"systemInstruction": {"parts": [{"text": system}]}, "contents": contents,
-            "generationConfig": {"maxOutputTokens": 1500}}
-    thinking = _thinking(model)
+            # Room for the answer plus a little thinking (it counts towards the limit on some models).
+            "generationConfig": {"maxOutputTokens": (max_tokens + 600) if max_tokens else 1500}}
     url = f"{BASE}/models/{model}:streamGenerateContent?alt=sse"
-    async with httpx.AsyncClient(timeout=httpx.Timeout(60.0, connect=10.0)) as client:
-        for attempt in range(2):
-            if thinking and attempt == 0:
-                body["generationConfig"]["thinkingConfig"] = thinking
-            else:
-                body["generationConfig"].pop("thinkingConfig", None)
-            async with client.stream("POST", url, headers=_headers(key), json=body) as resp:
-                if resp.status_code != 200:
-                    await resp.aread()
-                    if attempt == 0 and thinking and _thinking_rejected(resp):
-                        continue  # this model has other reasoning levels: ask again without the setting
-                    _fail(resp, "chat")
-                async for line in resp.aiter_lines():
-                    if not line.startswith("data:"):
-                        continue
-                    data = line[5:].strip()
-                    if not data or data == "[DONE]":
-                        continue
-                    try:
-                        chunk = json.loads(data)
-                    except ValueError:
-                        continue
-                    if chunk.get("error"):
-                        message, reasons = _error_info(chunk)
-                        logger.warning("Gemini chat stream error: %s %s", message[:200], reasons)
-                        err = chunk["error"] if isinstance(chunk["error"], dict) else {}
-                        raise _classify(err.get("code") if isinstance(err.get("code"), int) else 200,
-                                        f"{message} {reasons}".strip())
-                    text = _texts(chunk)
-                    if text:
-                        yield text
-                return
+    client = _http()
+    levels = _thinking_levels(model) or [None]
+    for n, level in enumerate(levels):
+        if level:
+            body["generationConfig"]["thinkingConfig"] = {"thinkingLevel": level}
+        else:
+            body["generationConfig"].pop("thinkingConfig", None)
+        async with client.stream("POST", url, headers=_headers(key), json=body) as resp:
+            if resp.status_code != 200:
+                await resp.aread()
+                if level and n + 1 < len(levels) and _thinking_rejected(resp):
+                    continue  # this model has other reasoning levels: ask again with the next one
+                _fail(resp, "chat")
+            _LEVEL_OK[model] = level
+            async for line in resp.aiter_lines():
+                if not line.startswith("data:"):
+                    continue
+                data = line[5:].strip()
+                if not data or data == "[DONE]":
+                    continue
+                try:
+                    chunk = json.loads(data)
+                except ValueError:
+                    continue
+                if chunk.get("error"):
+                    message, reasons = _error_info(chunk)
+                    logger.warning("Gemini chat stream error: %s %s", message[:200], reasons)
+                    err = chunk["error"] if isinstance(chunk["error"], dict) else {}
+                    raise _classify(err.get("code") if isinstance(err.get("code"), int) else 200,
+                                    f"{message} {reasons}".strip())
+                text = _texts(chunk)
+                if text:
+                    yield text
+            return
 
 
 async def _generate(client, key, model, body, what):
-    thinking = _thinking(model)
+    levels = _thinking_levels(model) or [None]
     url = f"{BASE}/models/{model}:generateContent"
-    for attempt in range(2):
-        if thinking and attempt == 0:
-            body.setdefault("generationConfig", {})["thinkingConfig"] = thinking
+    for n, level in enumerate(levels):
+        if level:
+            body.setdefault("generationConfig", {})["thinkingConfig"] = {"thinkingLevel": level}
         else:
             body.get("generationConfig", {}).pop("thinkingConfig", None)
         resp = await client.post(url, headers=_headers(key), json=body)
         if resp.status_code == 200:
+            _LEVEL_OK[model] = level
             return resp.json()
-        if attempt == 0 and thinking and _thinking_rejected(resp):
+        if level and n + 1 < len(levels) and _thinking_rejected(resp):
             continue
         _fail(resp, what)
 

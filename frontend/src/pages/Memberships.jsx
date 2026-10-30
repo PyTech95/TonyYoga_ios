@@ -2,8 +2,10 @@ import { isIOSApp } from "@/lib/iosPlatform";
 import IOSPrice from "@/components/IOSPrice";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, Sparkles } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Check, Sparkles, Gift, ArrowUpCircle, CalendarClock } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { useFeatures } from "@/lib/features";
+import { loginPath } from "@/lib/authRouting";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { t } from "@/lib/i18n";
@@ -17,15 +19,33 @@ export default function Memberships() {
   const { user } = useAuth();
   const { t: tr } = useTranslation();
   const nav = useNavigate();
+  const features = useFeatures();
+  const [quotes, setQuotes] = useState({});
 
   useEffect(() => {
     api.get("/membership-plans").then(({ data }) => setPlans(data)).catch(() => setPlans([]));
   }, []);
 
+  // What buying each plan means for someone who already has a membership:
+  // an upgrade (unused days are deducted) or a plan that starts when the current one ends.
+  useEffect(() => {
+    if (!user || !plans?.length || isIOSApp() || ["admin", "instructor"].includes(user.role)) { setQuotes({}); return undefined; }
+    let live = true;
+    Promise.all(plans.map((p) => api.get(`/me/membership-quote/${p.id}`).then(({ data }) => [p.id, data]).catch(() => [p.id, null])))
+      .then((rows) => { if (live) setQuotes(Object.fromEntries(rows.filter(([, q]) => q))); });
+    return () => { live = false; };
+  }, [user, plans]);
+
   const guardSignedIn = async () => {
-    if (!user) { toast("Please sign in first."); nav("/login"); return false; }
+    if (!user) { toast("Please sign in first."); nav(loginPath("/memberships")); return false; }
     return true;
   };
+
+  const fmtMoney = (amount, currency) => {
+    try { return new Intl.NumberFormat(undefined, { style: "currency", currency: String(currency || "EUR").toUpperCase() }).format(Number(amount || 0)); }
+    catch { return `${Number(amount || 0).toFixed(2)} ${String(currency || "").toUpperCase()}`; }
+  };
+  const fmtDay = (iso) => { const d = new Date(iso); return Number.isNaN(d.getTime()) ? String(iso).slice(0, 10) : d.toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" }); };
 
   return (
     <div data-testid="memberships-page">
@@ -64,6 +84,26 @@ export default function Memberships() {
                       ))}
                     </ul>
 
+                    {quotes[p.id]?.mode === "upgrade" && (
+                      <div data-testid={`plan-quote-upgrade-${p.id}`} className={`mt-5 rounded-2xl p-3 text-[13px] flex items-start gap-2 ${highlight ? "bg-white/10 text-white" : "bg-[#E4F0E8] text-[#1C221F]"}`}>
+                        <ArrowUpCircle className="h-4 w-4 shrink-0 mt-0.5 text-[#3E7C57]" />
+                        <span>{tr("memb.quote_upgrade", "Upgrade: pay {{charge}} today ({{credit}} credit for the unused days of your {{plan}}).", {
+                          charge: fmtMoney(quotes[p.id].charge, quotes[p.id].currency), credit: fmtMoney(quotes[p.id].credit, quotes[p.id].currency), plan: quotes[p.id].current_plan,
+                        })}</span>
+                      </div>
+                    )}
+                    {quotes[p.id]?.mode === "queued" && quotes[p.id].starts_at && (
+                      <div data-testid={`plan-quote-queued-${p.id}`} className={`mt-5 rounded-2xl p-3 text-[13px] flex items-start gap-2 ${highlight ? "bg-white/10 text-white" : "bg-[#F3E7C9]/60 text-[#1C221F]"}`}>
+                        <CalendarClock className="h-4 w-4 shrink-0 mt-0.5 text-[#8A6D3B]" />
+                        <span>{tr("memb.quote_queued", "Starts on {{date}}, when your current membership ends — no days are lost.", { date: fmtDay(quotes[p.id].starts_at) })}</span>
+                      </div>
+                    )}
+                    {quotes[p.id]?.mode === "lifetime" && (
+                      <div data-testid={`plan-quote-lifetime-${p.id}`} className={`mt-5 rounded-2xl p-3 text-[13px] ${highlight ? "bg-white/10 text-white" : "bg-[#F2F2EC] text-[#545E56]"}`}>
+                        {tr("memb.quote_lifetime", "You already have lifetime access with {{plan}}.", { plan: quotes[p.id].current_plan })}
+                      </div>
+                    )}
+
                     <div className="mt-6">
                       <PaymentButtons
                         itemType="membership"
@@ -73,6 +113,13 @@ export default function Memberships() {
                         testIdPrefix={`plan-${p.id}`}
                       />
                     </div>
+                    {features.gifts && (
+                      <div className="mt-3 text-center">
+                        <Link to={`/gift?plan=${p.id}`} data-testid={`plan-gift-${p.id}`} className={`inline-flex items-center gap-1.5 text-[13px] font-semibold ${highlight ? "text-[#F2C1B3]" : "text-[#B25A45]"} hover:underline`}>
+                          <Gift className="h-4 w-4" />{tr("memb.give_gift", "Give as a gift")}
+                        </Link>
+                      </div>
+                    )}
                     {!isIOSApp() && p.trial_days > 0 && (
                       <div className={`text-[11px] text-center mt-3 uppercase tracking-widest ${highlight ? "text-white/50" : "text-[#839682]"}`}>
                         {p.trial_days} {tr("memb.free_trial")}

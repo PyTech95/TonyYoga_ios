@@ -1,7 +1,7 @@
 """Stripe checkout + fulfillment + webhook."""
 import os
 import asyncio
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Dict
 from fastapi import Depends, HTTPException, Request
 
@@ -25,12 +25,20 @@ def _to_minor_units(amount: float, currency: str) -> int:
     return int(round(float(amount) * 100))
 
 
-async def _create_onetime_session(*, amount, currency, success_url, cancel_url, metadata, customer_email, product_name):
-    """One-time Checkout session via the official Stripe SDK."""
+async def _create_onetime_session(*, amount, currency, success_url, cancel_url, metadata, customer_email, product_name,
+                                  payee=None):
+    """One-time Checkout session via the official Stripe SDK. `payee` sends the money to a
+    teacher's connected Stripe account (direct charge) with an optional platform fee."""
     key = await _require_stripe_key()
+    extra = {}
+    if payee and payee.get("stripe_account"):
+        extra["stripe_account"] = payee["stripe_account"]
+        fee = float(payee.get("application_fee") or 0)
+        if fee > 0:
+            extra["payment_intent_data"] = {"application_fee_amount": _to_minor_units(fee, currency)}
     try:
         return await asyncio.to_thread(stripe.checkout.Session.create,
-            api_key=key,
+            api_key=key, **extra,
             mode="payment",
             success_url=success_url,
             cancel_url=cancel_url,
@@ -172,7 +180,10 @@ async def list_teacher_training():
     return [t for t in (await get_tt_catalog()).values() if t.get("active", True)]
 
 
-async def _resolve_price(item_type: str, item_id: str, quantity: int, user_id: str = None):
+async def _resolve_price(item_type: str, item_id: str, quantity: int, user_id: str = None, extra: dict = None):
+    from payment_items import ITEMS, allowed_extra
+    if item_type in ITEMS:
+        return await ITEMS[item_type]["price"](item_id, quantity, user_id, allowed_extra(item_type, extra))
     if item_type == "teacher_training":
         from routers.cms import get_tt_catalog
         t = (await get_tt_catalog()).get(item_id)
@@ -322,7 +333,28 @@ async def release_stranded_credit_tick():
         )
 
 
+async def membership_switch_price(item_type: str, item_id: str, user_id: str, amount: float, meta: dict) -> float:
+    """Upgrading to a pricier plan deducts the unused part of the current one; any other plan
+    bought while one is running starts when it ends (recorded in the checkout metadata)."""
+    if item_type != "membership" or not user_id:
+        return amount
+    plan = await db.membership_plans.find_one({"id": item_id}, {"_id": 0})
+    if not plan:
+        return amount
+    from routers.selfservice import membership_switch
+    sw = await membership_switch(user_id, plan)
+    if sw["mode"] == "upgrade" and sw["credit"] > 0:
+        meta.update(switch_mode="upgrade", switch_credit=f"{sw['credit']:.2f}", replaces_subscription_id=sw["replaces_subscription_id"])
+        return round(float(sw["charge"]), 2)
+    if sw["mode"] == "queued" and sw.get("starts_at"):
+        meta.update(switch_mode="queued", switch_starts_at=str(sw["starts_at"]))
+    return amount
+
+
 def _credit_eligible(item_type: str) -> bool:
+    from payment_items import ITEMS
+    if item_type in ITEMS:
+        return bool(ITEMS[item_type].get("credit"))
     # Store credit applies to one-time purchases (not real Stripe subscriptions).
     return item_type in (
         "membership", "program", "product", "cart", "bundle", "class_one_time", "class_subscription",
@@ -403,8 +435,12 @@ async def create_checkout(payload: CheckoutRequest, request: Request, user: dict
         })
         return {"url": session["url"], "session_id": session["session_id"]}
 
-    amount, currency, meta = await _resolve_price(payload.item_type, payload.item_id, payload.quantity, user["id"])
+    amount, currency, meta = await _resolve_price(payload.item_type, payload.item_id, payload.quantity, user["id"], payload.metadata)
     access_snapshot = meta.pop("_access_snapshot", None)
+    payee = meta.pop("_payee", None)
+    amount = await membership_switch_price(payload.item_type, payload.item_id, user["id"], amount, meta)
+    if payee:
+        payload.apply_credit = False  # money goes to the teacher, not to Tony Yoga
 
     # Gift-card store credit: reserve and deduct from the amount to charge.
     credit_applied = 0.0
@@ -431,6 +467,7 @@ async def create_checkout(payload: CheckoutRequest, request: Request, user: dict
             success_url=success_url, cancel_url=cancel_url, metadata=metadata,
             customer_email=user.get("email"),
             product_name=meta.get("product_name") or meta.get("title") or meta.get("name"),
+            payee=payee,
         )
     except Exception:
         await _release_store_credit(user["id"], credit_applied)
@@ -445,6 +482,8 @@ async def create_checkout(payload: CheckoutRequest, request: Request, user: dict
         "payment_status": "initiated", "status": "open",
         "mode": "payment",
         **({"access_snapshot": access_snapshot} if access_snapshot else {}),
+        **({"stripe_account": payee["stripe_account"], "application_fee": float(payee.get("application_fee") or 0),
+            "payee_teacher_id": payee.get("teacher_id")} if payee and payee.get("stripe_account") else {}),
         "created_at": now_utc().isoformat(),
     })
     return {"url": session.url, "session_id": session.id}
@@ -458,10 +497,18 @@ async def checkout_status(session_id: str, request: Request):
     return await confirm_stripe_txn(txn)
 
 
+REFUNDED = ("refunded", "partially_refunded")
+SETTLED = ("paid",) + REFUNDED
+
+
 async def confirm_stripe_txn(txn: dict) -> dict:
     """Ask Stripe about a checkout and fulfil it if it is paid. Safe to call many times
     (from the success page, the webhook, the automatic re-check and the admin button)."""
     session_id = txn["session_id"]
+    if txn.get("payment_status") in REFUNDED:
+        # Refunded by the studio: never deliver it again, whatever the checkout says.
+        return {"status": "complete", "payment_status": txn["payment_status"], "amount_total": None, "currency": txn.get("currency"),
+                "metadata": {}, "return_path": await purchase_link(txn)}
     # Subscription-mode sessions: query Stripe directly (retrieve + expand subscription)
     # so we can reflect trial/active status accurately.
     if txn.get("mode") == "subscription":
@@ -483,12 +530,13 @@ async def confirm_stripe_txn(txn: dict) -> dict:
                     "payment_status": "paid", "status": "complete",
                     "stripe_subscription_id": (sub.get("id") if isinstance(sub, dict) else None),
                     "stripe_subscription_status": sub_status,
+                    "stripe_customer_id": s.get("customer") if isinstance(s.get("customer"), str) else (s.get("customer") or {}).get("id"),
                     "completed_at": now_utc().isoformat(),
                 }},
             )
             await _fulfill_payment(await db.payment_transactions.find_one({"session_id": session_id}))
         elif s.get("status") == "expired":
-            await db.payment_transactions.update_one({"session_id": session_id, "payment_status": {"$ne": "paid"}}, {"$set": {"status": "expired"}})
+            await db.payment_transactions.update_one({"session_id": session_id, "payment_status": {"$nin": list(SETTLED)}}, {"$set": {"status": "expired"}})
         return {
             "status": s.get("status", "open"),
             "payment_status": "paid" if (session_complete and is_active) else "pending",
@@ -500,7 +548,8 @@ async def confirm_stripe_txn(txn: dict) -> dict:
         }
 
     try:
-        status = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id, api_key=await _stripe_api_key())
+        kw = {"stripe_account": txn["stripe_account"]} if txn.get("stripe_account") else {}
+        status = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id, api_key=await _stripe_api_key(), **kw)
     except HTTPException:
         raise
     except Exception as e:
@@ -515,7 +564,7 @@ async def confirm_stripe_txn(txn: dict) -> dict:
         await _fulfill_payment(await db.payment_transactions.find_one({"session_id": session_id}))
     else:
         await db.payment_transactions.update_one(
-            {"session_id": session_id, "payment_status": {"$ne": "paid"}}, {"$set": {"payment_status": status.payment_status, "status": status.status}},
+            {"session_id": session_id, "payment_status": {"$nin": list(SETTLED)}}, {"$set": {"payment_status": status.payment_status, "status": status.status}},
         )
     return {
         "status": status.status, "payment_status": status.payment_status,
@@ -526,6 +575,9 @@ async def confirm_stripe_txn(txn: dict) -> dict:
 
 async def _receipt_description(txn: dict) -> str:
     it = txn.get("item_type"); iid = txn.get("item_id")
+    from payment_items import ITEMS
+    if it in ITEMS and ITEMS[it].get("describe"):
+        return await ITEMS[it]["describe"](txn)
     if it == "membership":
         plan = await db.membership_plans.find_one({"id": iid})
         return f"{plan_name(plan)} membership"
@@ -590,6 +642,11 @@ async def _fulfill_payment(txn: dict):
     if txn.get("credit_released") and (txn.get("credit_applied") or 0) > 0:
         await db.users.update_one({"id": user_id}, {"$inc": {"store_credit": -round(float(txn["credit_applied"]), 2)}})
         await db.payment_transactions.update_one({"id": txn.get("id")}, {"$set": {"credit_released": False}})
+    from payment_items import ITEMS
+    if item_type in ITEMS:
+        await ITEMS[item_type]["fulfill"](txn)
+        await after_payment(txn)
+        return
     if item_type == "membership":
         plan = await db.membership_plans.find_one({"id": item_id})
         if not plan: return
@@ -599,7 +656,28 @@ async def _fulfill_payment(txn: dict):
         now = datetime.fromisoformat(paid_at.replace("Z", "+00:00"))
         # For trialing subs, end_date = now + trial; otherwise = now + full billing cycle.
         period_days = trial_days if is_trialing else days_per_cycle
-        end_date = now + timedelta(days=period_days)
+        meta = txn.get("metadata") or {}
+        existing = await db.subscriptions.find_one({"_id": delivery_id}, {"_id": 0, "start_date": 1})
+        start_at = now
+        if existing and existing.get("start_date"):
+            start_at = parse_dt(existing["start_date"]) or now  # re-delivery keeps the original dates
+        elif meta.get("switch_mode") == "queued":
+            # Starts when the membership they already have ends, so no paid days are lost.
+            others = await db.subscriptions.find({"user_id": user_id, "status": {"$in": ["active", "trialing"]}, "_id": {"$ne": delivery_id}},
+                                                 {"_id": 0, "end_date": 1}).to_list(50)
+            ends = [parse_dt(o.get("end_date")) for o in others if not str(o.get("end_date")).startswith("2099")]
+            ends = [e for e in ends if e and e > now]
+            if ends:
+                start_at = max(ends)
+        end_date = start_at + timedelta(days=period_days)
+        if meta.get("switch_mode") == "upgrade" and meta.get("replaces_subscription_id"):
+            old = await db.subscriptions.find_one({"id": meta["replaces_subscription_id"], "user_id": user_id, "status": {"$in": ["active", "trialing"]}},
+                                                  {"_id": 0, "end_date": 1})
+            if old:
+                await db.subscriptions.update_one(
+                    {"id": meta["replaces_subscription_id"], "user_id": user_id, "status": {"$in": ["active", "trialing"]}},
+                    {"$set": {"status": "replaced", "replaced_by": delivery_id, "replaced_at": now.isoformat(), "end_date": now.isoformat(),
+                              "original_end_date": old.get("end_date")}})
         # Referral reward (only when actual money has moved → skip if still in trial)
         if not is_trialing:
             user = await db.users.find_one({"id": user_id})
@@ -631,7 +709,9 @@ async def _fulfill_payment(txn: dict):
                 "id": delivery_id, "user_id": user_id, "plan_id": item_id,
                 "status": "trialing" if is_trialing else "active",
                 "stripe_subscription_id": txn.get("stripe_subscription_id"),
-                "start_date": now.isoformat(),
+                "stripe_customer_id": txn.get("stripe_customer_id"),
+                "transaction_id": txn.get("id"),
+                "start_date": start_at.isoformat(),
                 "end_date": end_date.isoformat(),
                 "next_billing_date": end_date.isoformat(),
                 "trial_end_date": (now + timedelta(days=trial_days)).isoformat() if trial_days > 0 else None,
@@ -823,6 +903,31 @@ def _validate_paid_session(txn, session):
         raise HTTPException(409, "Payment details do not match the booking.")
 
 
+async def subscription_invoice_event(sub_id: str, failed: bool, attempt: int = 1, invoice_id: str = None):
+    rows = await db.subscriptions.find({"stripe_subscription_id": sub_id}, {"_id": 0}).to_list(20)
+    from notify import notify_member
+    for sub in rows:
+        if failed:
+            await db.subscriptions.update_one({"id": sub["id"], "past_due_since": {"$exists": False}},
+                                              {"$set": {"past_due_since": now_utc().isoformat()}})
+            await db.subscriptions.update_one({"id": sub["id"], "status": {"$in": ["active", "trialing"]}}, {"$set": {"status": "past_due"}})
+            grace = int(await get_setting("past_due_grace_days") or 7)
+            await notify_member(sub["user_id"], "Your card payment didn't go through",
+                                f"We couldn't renew your membership. Please update your card in My Yoga within {grace} days to keep your classes and courses.",
+                                "/my-yoga?fix=card", dedupe_key=f"payfail:{invoice_id or sub_id}:{attempt}",
+                                email_subject="Please update your card — Tony Yoga", cta_label="Update my card")
+            if attempt <= 1:
+                from routers.notifications import push_admins
+                plan = await db.membership_plans.find_one({"id": sub.get("plan_id")}, {"_id": 0}) or {}
+                user = await db.users.find_one({"id": sub["user_id"]}, {"_id": 0, "email": 1}) or {}
+                await push_admins("Card payment failed", f"{user.get('email') or 'A member'}: {plan_name(plan)} renewal failed.",
+                                  "/admin?tab=students", dedupe_key=f"admin-payfail:{invoice_id or sub_id}")
+        elif sub.get("status") == "past_due":
+            await db.subscriptions.update_one({"id": sub["id"]}, {"$set": {"status": "active"}, "$unset": {"past_due_since": ""}})
+            await notify_member(sub["user_id"], "Payment received", "Thank you, your membership is active again.", "/my-yoga",
+                                email=False, dedupe_key=f"payok:{invoice_id or sub_id}")
+
+
 @api.post("/webhook/stripe")
 async def stripe_webhook(request: Request):
     """Official Stripe webhook. Verifies the signature when a webhook secret is configured,
@@ -857,7 +962,7 @@ async def stripe_webhook(request: Request):
             paid = obj.get("payment_status") == "paid"
             if session_id and paid:
                 txn = await db.payment_transactions.find_one({"session_id": session_id})
-                if txn and (txn.get("payment_status") != "paid" or ((txn.get("access_snapshot") or txn.get("item_type") == "private_session") and not txn.get("fulfilled_at"))):
+                if txn and txn.get("payment_status") not in REFUNDED and (txn.get("payment_status") != "paid" or ((txn.get("access_snapshot") or txn.get("item_type") == "private_session") and not txn.get("fulfilled_at"))):
                     _validate_paid_session(txn, obj)
                     await db.payment_transactions.update_one(
                         {"session_id": session_id},
@@ -871,14 +976,40 @@ async def stripe_webhook(request: Request):
             sub = obj
             sub_id = sub.get("id")
             sub_status = sub.get("status")  # trialing | active | past_due | canceled | unpaid
-            current_period_end = sub.get("current_period_end")  # unix ts
-            update = {"status": sub_status if sub_status in ("trialing", "active") else "cancelled"}
-            if current_period_end:
-                end_iso = datetime.fromtimestamp(current_period_end).isoformat()
+            current_period_end = sub.get("current_period_end") or ((sub.get("items") or {}).get("data") or [{}])[0].get("current_period_end")
+            if etype == "customer.subscription.deleted" or sub_status in ("canceled", "incomplete_expired"):
+                status = "cancelled"
+            elif sub_status in ("past_due", "unpaid"):
+                status = "past_due"
+            else:
+                status = sub_status if sub_status in ("trialing", "active") else "cancelled"
+            update = {"status": status, "cancel_at_period_end": bool(sub.get("cancel_at_period_end"))}
+            if current_period_end and status != "cancelled":
+                end_iso = datetime.fromtimestamp(current_period_end, tz=timezone.utc).isoformat()
                 update["end_date"] = end_iso
                 update["next_billing_date"] = end_iso
-            await db.subscriptions.update_many({"stripe_subscription_id": sub_id}, {"$set": update})
+            if isinstance(sub.get("customer"), str):
+                update["stripe_customer_id"] = sub["customer"]
+            query = {"stripe_subscription_id": sub_id}
+            if sub.get("pause_collection") and status == "active":
+                query["status"] = {"$ne": "paused"}  # paused by the member here; keep it paused
+            if status == "past_due":
+                await db.subscriptions.update_many({**query, "past_due_since": {"$exists": False}}, {"$set": {"past_due_since": now_utc().isoformat()}})
+            else:
+                update_unset = {"past_due_since": ""}
+                await db.subscriptions.update_many(query, {"$unset": update_unset})
+            await db.subscriptions.update_many(query, {"$set": update})
             logger.info(f"Subscription {sub_id} synced → {sub_status}")
+
+        # Renewal payments: a failed card keeps access for a grace period and tells the member.
+        if etype in ("invoice.payment_failed", "invoice.paid", "invoice.payment_succeeded"):
+            sub_id = obj.get("subscription") or ((obj.get("parent") or {}).get("subscription_details") or {}).get("subscription")
+            if sub_id:
+                await subscription_invoice_event(sub_id, failed=etype == "invoice.payment_failed",
+                                                 attempt=int(obj.get("attempt_count") or 1), invoice_id=obj.get("id"))
+        from payment_items import STRIPE_HOOKS
+        for hook in STRIPE_HOOKS:
+            await hook(etype, obj)
     except Exception as e:
         logger.exception(f"Webhook handling error for {etype}: {e}")
         raise HTTPException(400, "Webhook handling failed")
@@ -924,6 +1055,9 @@ async def grant_training_courses(txn: dict, training: dict):
 async def purchase_link(txn: dict) -> str:
     """Where the member should land after paying for this purchase."""
     it, iid = txn.get("item_type"), txn.get("item_id")
+    from payment_items import ITEMS
+    if it in ITEMS and ITEMS[it].get("link"):
+        return await ITEMS[it]["link"](txn)
     grants = ((txn.get("access_snapshot") or {}).get("grants") or [])
     if it == "program":
         return f"/programs/{iid}"
@@ -941,11 +1075,17 @@ async def purchase_link(txn: dict) -> str:
 async def _paid_message(txn: dict):
     it = txn.get("item_type")
     desc = await _receipt_description(txn)
+    from payment_items import ITEMS
+    if it in ITEMS and ITEMS[it].get("message"):
+        return await ITEMS[it]["message"](txn)
     if it == "membership":
         plan = await db.membership_plans.find_one({"id": txn.get("item_id")}, {"_id": 0}) or {}
         sub = await db.subscriptions.find_one({"user_id": txn["user_id"], "plan_id": txn.get("item_id")}, {"_id": 0}, sort=[("end_date", -1)])
         until = f" until {str((sub or {}).get('end_date') or '')[:10]}" if sub else ""
         extra = " Choose your included course in My Yoga." if int(plan.get("choose_courses") or 0) > 0 else " Everything it includes is in My Yoga."
+        if (txn.get("metadata") or {}).get("switch_mode") == "queued" and sub:
+            return (f"Your {plan_name(plan)} membership is booked",
+                    f"Thank you! It starts on {str(sub.get('start_date'))[:10]}, when your current membership ends, and runs{until}.")
         return f"Your {plan_name(plan)} membership is active", f"Thank you! Your membership is active{until}.{extra}"
     if it in ("product", "cart"):
         return "Order received", "Thank you! We received your payment and will let you know when your order ships."
@@ -991,6 +1131,8 @@ _last_reconcile = {"at": 0.0}
 async def reconcile_transaction(txn: dict) -> dict:
     """Check one unconfirmed card/PayPal payment with the provider and deliver it if it was paid."""
     provider = txn.get("provider") or "stripe"
+    if txn.get("payment_status") in REFUNDED:
+        return {"result": "refunded", "detail": "This payment was refunded."}
     if txn.get("payment_status") == "paid":
         if not txn.get("after_payment_at") and not txn.get("fulfilled_at"):
             await _fulfill_payment(txn)
@@ -1021,7 +1163,7 @@ async def reconcile_payments_tick(force: bool = False):
         return
     now = now_utc()
     rows = await db.payment_transactions.find({
-        "payment_status": {"$ne": "paid"},
+        "payment_status": {"$nin": list(SETTLED)},
         "status": {"$nin": ["expired", "cancelled", "failed"]},
         "provider": {"$in": [None, "stripe", "paypal"]},
         "created_at": {"$gte": (now - timedelta(days=3)).isoformat(), "$lte": (now - timedelta(minutes=3)).isoformat()},
@@ -1035,6 +1177,6 @@ async def reconcile_payments_tick(force: bool = False):
             logger.warning(f"payment re-check failed for {txn.get('id')}: {str(getattr(e, 'detail', e))[:200]}")
     # Older than 3 days and still unpaid: the customer abandoned it.
     await db.payment_transactions.update_many({
-        "payment_status": {"$ne": "paid"}, "status": {"$nin": ["expired", "cancelled", "failed"]},
+        "payment_status": {"$nin": list(SETTLED)}, "status": {"$nin": ["expired", "cancelled", "failed"]},
         "provider": {"$in": [None, "stripe", "paypal"]}, "created_at": {"$lt": (now - timedelta(days=3)).isoformat()},
     }, {"$set": {"status": "expired"}})

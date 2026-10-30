@@ -15,6 +15,9 @@ import Spinner from "@/components/Spinner";
 import PushToggle from "@/components/PushToggle";
 import MyYogaCard from "@/components/MyYogaCard";
 import NotificationSettings from "@/components/NotificationSettings";
+import PracticeStats from "@/components/PracticeStats";
+import ChangePassword from "@/components/ChangePassword";
+import { CalendarCheck, BookOpenCheck, Receipt as ReceiptIcon } from "lucide-react";
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
   AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
@@ -175,6 +178,21 @@ export default function Profile() {
 
         {/* Everything the member has: membership, courses, classes, orders */}
         <MyYogaCard />
+        <PracticeStats />
+        <section className="grid grid-cols-3 gap-2" data-testid="profile-self-links">
+          <Link to="/my-classes" data-testid="profile-link-my-classes" className="rounded-2xl bg-white border border-[#E5E6DF] p-3 hover:border-[#B25A45] transition text-center">
+            <CalendarCheck className="h-5 w-5 text-[#B25A45] mx-auto mb-1.5" />
+            <div className="text-[12px] font-semibold leading-tight">My classes</div>
+          </Link>
+          <Link to="/my-learning" data-testid="profile-link-my-learning" className="rounded-2xl bg-white border border-[#E5E6DF] p-3 hover:border-[#B25A45] transition text-center">
+            <BookOpenCheck className="h-5 w-5 text-[#B25A45] mx-auto mb-1.5" />
+            <div className="text-[12px] font-semibold leading-tight">My learning</div>
+          </Link>
+          <Link to="/my-payments" data-testid="profile-link-my-payments" className="rounded-2xl bg-white border border-[#E5E6DF] p-3 hover:border-[#B25A45] transition text-center">
+            <ReceiptIcon className="h-5 w-5 text-[#B25A45] mx-auto mb-1.5" />
+            <div className="text-[12px] font-semibold leading-tight">Payments</div>
+          </Link>
+        </section>
         <section>
           <div className="eyebrow mb-3">Your bookings</div>
           {bookings === null ? <Spinner /> : bookings.length === 0 ? (
@@ -211,6 +229,7 @@ export default function Profile() {
         {/* Reminders */}
         <PushToggle />
         <NotificationSettings />
+        <ChangePassword />
 
         {/* Gift card / store credit */}
         {!isIOSApp() && (<section data-testid="gift-card-section" className="rounded-3xl bg-white border border-[#E5E6DF] p-5">

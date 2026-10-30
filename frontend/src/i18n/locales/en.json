@@ -296,5 +296,8 @@
   "med.tab_nidra": "Yoga Nidra",
   "med.search": "Search…",
   "med.empty": "Nothing matches yet.",
-  "med.audio_unsupported": "Your browser does not support audio playback."
+  "med.audio_unsupported": "Your browser does not support audio playback.",
+  "myyoga.help_title": "Messages with Tony’s team",
+  "myyoga.help_answered": "Answered",
+  "myyoga.help_open": "With the team"
 }

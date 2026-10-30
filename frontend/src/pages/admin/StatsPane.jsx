@@ -6,6 +6,7 @@ import { UsageMetrics, PerformanceChart } from "./PerformanceChart";
 import { BusinessOverview } from "./BusinessOverview";
 import { DashboardActivity } from "./DashboardActivity";
 import { RevenueOverview } from "./RevenueOverview";
+import AdminInbox from "./AdminInbox";
 
 export default function StatsPane() {
   const [days, setDays] = useState(30), [revision, setRevision] = useState(0);
@@ -40,6 +41,7 @@ export default function StatsPane() {
     <div className="admin-overview-heading"><div><p className="admin-kicker">TONY YOGA · ADMIN</p><h1 data-testid="admin-header">Studio overview</h1><p data-testid="admin-overview-date">{new Date().toLocaleDateString(undefined, { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</p></div>
       <div className="admin-period-controls"><CalendarDays size={15} className="text-[#68796d]" /><select data-testid="admin-period-select" aria-label="Reporting period" value={days} onChange={e => setDays(Number(e.target.value))} disabled={saving}><option value={7}>Last 7 days</option><option value={30}>Last 30 days</option><option value={90}>Last 90 days</option></select><button className="admin-icon-button" data-testid="admin-refresh" title="Refresh dashboard" aria-label="Refresh dashboard" onClick={() => setRevision(value => value + 1)} disabled={(!data && !error) || saving}><RefreshCw size={16} /></button><button className="admin-icon-button" data-testid="admin-export-csv" title="Export performance CSV" aria-label="Export performance CSV" onClick={exportCsv} disabled={!data}><Download size={16} /></button></div>
     </div>
+    <AdminInbox />
     {error ? <div className="admin-error" role="alert" data-testid="admin-dashboard-error">{error}<button data-testid="admin-dashboard-retry" className="admin-icon-button" onClick={() => setRevision(value => value + 1)}>Retry</button></div> : !data ? <div data-testid="admin-dashboard-loading" className="py-20 text-sm text-[#68716c]" role="status">Loading studio performance…</div> : <>
       <UsageMetrics summary={data.report.summary} />
       <PerformanceChart report={data.report} onTrackingChange={updateTracking} saving={saving} />

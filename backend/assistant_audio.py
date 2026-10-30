@@ -91,7 +91,8 @@ async def _gemini_speech(text, voice=None):
     return await _store_audio(cache_key, audio, 'audio/wav')
 
 
-async def transcribe(upload):
+async def read_upload(upload):
+    """(bytes, extension) of a voice recording, validated. Read inside the request (not while streaming)."""
     allowed = {'.webm', '.mp3', '.mp4', '.m4a', '.wav', '.mpeg', '.mpga'}
     extension = os.path.splitext(upload.filename or '')[1].lower()
     if extension not in allowed:
@@ -102,6 +103,15 @@ async def transcribe(upload):
         raise HTTPException(400, 'Empty recording. Please try speaking again.')
     if len(raw) > 6 * 1024 * 1024:
         raise HTTPException(413, 'Recording is too large. Please keep it under 30 seconds.')
+    return raw, extension
+
+
+async def transcribe(upload):
+    raw, extension = await read_upload(upload)
+    return await transcribe_raw(raw, extension)
+
+
+async def transcribe_raw(raw, extension):
     if await provider() == 'gemini':
         try:
             model = await get_setting('assistant_gemini_model') or gemini.DEFAULT_MODEL

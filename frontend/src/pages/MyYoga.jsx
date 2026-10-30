@@ -4,12 +4,28 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import {
   Sparkles, GraduationCap, CalendarDays, Ticket, Package, Truck, CheckCircle2, Clock, ArrowRight,
-  PlayCircle, MountainSnow, Loader2, ExternalLink,
+  PlayCircle, MountainSnow, Loader2, ExternalLink, AlertTriangle, CreditCard, Map as MapIcon, CalendarCheck, BookOpenCheck, Receipt,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import PageHeader from "@/components/PageHeader";
 import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
+import MembershipManage, { openBillingPortal } from "@/components/MembershipManage";
+import TeacherClassesSection from "@/components/TeacherClassesSection";
+import HelpMessagesSection from "@/components/HelpMessagesSection";
+import { isIOSApp } from "@/lib/iosPlatform";
+
+const QUICK_LINKS = [
+  ["/my-plan", "myyoga.link_plan", "My plan", MapIcon],
+  ["/my-classes", "myyoga.link_classes", "My classes", CalendarCheck],
+  ["/my-learning", "myyoga.link_learning", "My learning", BookOpenCheck],
+  ["/my-payments", "myyoga.link_payments", "Payments & receipts", Receipt],
+];
+
+const STATE_CHIP = {
+  active: "bg-[#E4F0E8] text-[#3E7C57]", upcoming: "bg-[#F3E7C9] text-[#8A6D3B]", paused: "bg-[#F3E7C9] text-[#8A6D3B]",
+  past_due: "bg-[#FBEFEA] text-[#B25A45]",
+};
 
 const LIFETIME = "2099";
 
@@ -31,6 +47,18 @@ function Until({ iso, t }) {
   if (!iso) return null;
   if (String(iso).startsWith(LIFETIME)) return <span>{t("myyoga.lifetime", "Lifetime access")}</span>;
   return <span>{t("myyoga.until", "Until")} {fmtDate(iso)}</span>;
+}
+
+/** The membership's "includes" lines come from the server in English; show them in the reader's language. */
+function includeLabel(x, t) {
+  let m;
+  if (x === "All courses") return t("myyoga.inc_all_courses", "All courses");
+  if (x === "On-demand library") return t("myyoga.inc_library", "On-demand library");
+  if (x === "Unlimited live classes") return t("myyoga.inc_live_unlimited", "Unlimited live classes");
+  if ((m = x.match(/^(\d+) course\(s\) of your choice$/))) return t("myyoga.inc_choose", "{{n}} course(s) of your choice", { n: m[1] });
+  if ((m = x.match(/^(\d+) course\(s\)$/))) return t("myyoga.inc_courses", "{{n}} course(s)", { n: m[1] });
+  if ((m = x.match(/^(\d+) live classes \/ week$/))) return t("myyoga.inc_live_week", "{{n}} live classes / week", { n: m[1] });
+  return x;
 }
 
 const ORDER_STEPS = ["paid", "processing", "shipped", "delivered"];
@@ -95,6 +123,13 @@ export default function MyYoga() {
   };
 
   const first = (user?.name || "").split(" ")[0];
+  const pastDue = (data?.memberships || []).filter((m) => m.state === "past_due");
+  const fixCard = params.get("fix") === "card";
+  const stateLabel = (m) => (m.state === "active" ? t("myyoga.active", "Active")
+    : m.state === "upcoming" ? t("myyoga.starts", "Starts {{date}}", { date: fmtDate(m.start_date) })
+      : m.state === "paused" ? t("myyoga.paused", "Paused")
+        : m.state === "past_due" ? t("myyoga.past_due", "Payment failed")
+          : t("myyoga.ended", "Ended"));
   const nothing = data && !data.memberships.length && !data.courses.length && !data.credits && !data.upcoming_bookings.length &&
     !data.trainings.length && !data.retreats.length && !data.orders.length && !data.class_access.length;
 
@@ -111,6 +146,36 @@ export default function MyYoga() {
         {!data && !error && (
           <div className="space-y-3" aria-busy="true">
             {[0, 1, 2].map((i) => <div key={i} className="h-24 rounded-3xl bg-[#F2F2EC] animate-pulse" />)}
+          </div>
+        )}
+
+        <nav className="grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="my-yoga-links">
+          {QUICK_LINKS.map(([to, key, label, Icon]) => (
+            <Link key={to} to={to} data-testid={`my-yoga-link-${to.slice(4)}`}
+              className="inline-flex items-center justify-center gap-1.5 rounded-2xl bg-white border border-[#E5E6DF] px-3 py-2.5 text-[13px] font-semibold text-[#1C221F] hover:border-[#B25A45] text-center">
+              <Icon className="h-4 w-4 text-[#B25A45]" />{t(key, label)}
+            </Link>
+          ))}
+        </nav>
+
+        {data && (pastDue.length > 0 || fixCard) && (
+          <div data-testid="my-yoga-past-due" className="rounded-2xl bg-[#FBEFEA] border border-[#EED9D2] p-4 flex gap-3">
+            <AlertTriangle className="h-5 w-5 text-[#B25A45] shrink-0 mt-0.5" />
+            <div className="text-[13px] text-[#5C3328] leading-relaxed">
+              <div className="font-semibold text-[#1C221F]">{pastDue.length ? t("myyoga.card_failed", "Your card payment didn't go through") : t("myyoga.card_update", "Update your card")}</div>
+              {pastDue.length
+                ? t("myyoga.card_failed_body", "You still have access for a few days. Update your card so your classes and courses continue.")
+                : t("myyoga.card_update_body", "Change the card used for your membership and see your invoices.")}
+              <div className="mt-2">
+                {isIOSApp() ? (
+                  <span className="text-[12px] text-[#6B7269]">{t("myyoga.card_on_web", "Update it on tonyoga.com → My Yoga.")}</span>
+                ) : (pastDue.some((m) => m.managed_by === "stripe") || (!pastDue.length && data.memberships.some((m) => m.managed_by === "stripe"))) ? (
+                  <button onClick={openBillingPortal} data-testid="my-yoga-update-card" className="pill pill-primary !py-2 !px-4 !text-xs"><CreditCard className="h-3.5 w-3.5" />{t("myyoga.update_card", "Update card")}</button>
+                ) : (
+                  <Link to="/memberships" className="pill pill-primary !py-2 !px-4 !text-xs">{t("myyoga.renew", "Renew")}</Link>
+                )}
+              </div>
+            </div>
           </div>
         )}
 
@@ -173,22 +238,23 @@ export default function MyYoga() {
                       <div className="serif text-2xl leading-tight">{m.plan_name}</div>
                       <div className="text-[13px] text-[#6B7269] mt-1"><Until iso={m.end_date} t={t} /></div>
                     </div>
-                    <span className={`text-[10px] uppercase tracking-widest font-bold rounded-full px-2.5 py-1 ${m.state === "active" ? "bg-[#E4F0E8] text-[#3E7C57]" : m.state === "upcoming" ? "bg-[#F3E7C9] text-[#8A6D3B]" : "bg-[#F2F2EC] text-[#6B7269]"}`}>
-                      {m.state === "active" ? t("myyoga.active", "Active") : m.state === "upcoming" ? t("myyoga.starts", "Starts {{date}}", { date: fmtDate(m.start_date) }) : t("myyoga.ended", "Ended")}
+                    <span data-testid="my-yoga-membership-state" className={`text-[10px] uppercase tracking-widest font-bold rounded-full px-2.5 py-1 shrink-0 ${STATE_CHIP[m.state] || "bg-[#F2F2EC] text-[#6B7269]"}`}>
+                      {stateLabel(m)}
                     </span>
                   </div>
                   {m.includes?.length > 0 && (
                     <ul className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                       {m.includes.map((x) => (
-                        <li key={x} className="flex items-center gap-2 text-[13px] text-[#1C221F]"><CheckCircle2 className="h-4 w-4 text-[#839682] shrink-0" />{x}</li>
+                        <li key={x} className="flex items-center gap-2 text-[13px] text-[#1C221F]"><CheckCircle2 className="h-4 w-4 text-[#839682] shrink-0" />{includeLabel(x, t)}</li>
                       ))}
                     </ul>
                   )}
                   <div className="mt-4 flex flex-wrap gap-2">
                     {m.state === "active" && <Link to="/schedule" className="pill pill-primary !py-2 !px-4 !text-xs">{t("myyoga.book_live", "Book a live class")}</Link>}
                     {m.state === "active" && <Link to="/library" className="pill pill-ghost !py-2 !px-4 !text-xs">{t("myyoga.open_library", "On-demand library")}</Link>}
-                    {m.state !== "active" && <Link to="/memberships" className="pill pill-primary !py-2 !px-4 !text-xs">{t("myyoga.renew", "Renew")}</Link>}
+                    {["expired", "cancelled"].includes(m.state) && <Link to="/memberships" className="pill pill-primary !py-2 !px-4 !text-xs">{t("myyoga.renew", "Renew")}</Link>}
                   </div>
+                  <MembershipManage membership={m} onChanged={load} />
                 </div>
               ))}
             </div>
@@ -256,6 +322,10 @@ export default function MyYoga() {
             </div>
           </Section>
         )}
+
+        <HelpMessagesSection />
+
+        <TeacherClassesSection />
 
         {data && (data.trainings.length > 0 || data.retreats.length > 0) && (
           <Section icon={MountainSnow} title={t("myyoga.trainings", "Trainings & retreats")}>

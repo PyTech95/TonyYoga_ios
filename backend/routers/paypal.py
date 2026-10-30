@@ -147,8 +147,12 @@ async def paypal_create_order(payload: CheckoutRequest, user: dict = Depends(get
     from routers.payments import (
         _reserve_store_credit, _release_store_credit, _credit_eligible, _fulfill_credit_only,
     )
-    amount, currency, meta = await _resolve_price(payload.item_type, payload.item_id, payload.quantity, user["id"])
+    amount, currency, meta = await _resolve_price(payload.item_type, payload.item_id, payload.quantity, user["id"], payload.metadata)
     access_snapshot = meta.pop("_access_snapshot", None)
+    if meta.pop("_payee", None):
+        raise HTTPException(409, "This teacher takes card payments only. Please pay by card.")
+    from routers.payments import membership_switch_price
+    amount = await membership_switch_price(payload.item_type, payload.item_id, user["id"], amount, meta)
 
     # Gift-card store credit: reserve and deduct from the amount to charge.
     credit_applied = 0.0
@@ -259,6 +263,8 @@ async def _complete_paypal_order(order_id, data):
         txn = await db.payment_transactions.find_one({"session_id": order_id, "provider": "paypal"})
         if not txn:
             raise HTTPException(404, "PayPal order not found")
+        if txn.get("payment_status") in ("refunded", "partially_refunded"):
+            return {"status": "refunded", "order_id": order_id}
         capture_id = _verify_paypal_order(data, txn)
         if txn.get("fulfilled_at") or (txn.get("payment_status") == "paid" and txn.get("delivery_version", 1) < 2 and not txn.get("access_snapshot") and txn.get("item_type") != "private_session"):
             # Older handlers marked ordinary purchases paid only once. Do not issue a

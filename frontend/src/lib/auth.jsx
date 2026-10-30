@@ -44,6 +44,8 @@ export function AuthProvider({ children }) {
     try {
       sessionStorage.removeItem("tonyoga_pending_checkout");
       sessionStorage.removeItem("tonyoga_ai_consent_v1");
+      // The assistant conversation may hold this account's details: never show it to the next person.
+      ["ty_assistant_session", "ty_assistant_messages", "ty_assistant_owner"].forEach((k) => sessionStorage.removeItem(k));
     } catch {}
     setUser(null);
   };

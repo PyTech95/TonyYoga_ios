@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
-import { Lock, CheckCircle2, Scissors, Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw } from "lucide-react";
+import { Lock, CheckCircle2, Scissors, Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, Users } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import RelatedProducts from "@/components/RelatedProducts";
+import LessonExtras from "@/components/LessonExtras";
 import { isYouTube, parseYouTubeId, secToMMSS } from "@/lib/youtube";
 
 // Lazy-load the YouTube IFrame Player API once.
@@ -40,6 +41,16 @@ export default function VideoPlayer() {
   const [isFs, setIsFs] = useState(false);
   const [resumeDismissed, setResumeDismissed] = useState(false);
   const [relatedProducts, setRelatedProducts] = useState([]);
+  const [practisedToday, setPractisedToday] = useState(0);
+
+  // A small community signal: how many people practised this class today (no names).
+  useEffect(() => {
+    let live = true;
+    setPractisedToday(0);
+    if (!id) return undefined;
+    api.get(`/videos/${id}/today`).then(({ data }) => { if (live) setPractisedToday(Number(data?.count || 0)); }).catch(() => {});
+    return () => { live = false; };
+  }, [id]);
 
   useEffect(() => {
     const onFs = () => setIsFs(!!document.fullscreenElement);
@@ -434,8 +445,15 @@ export default function VideoPlayer() {
               <span data-testid="video-resumed" className="text-[#B25A45] font-semibold">Resuming where you left off</span>
             )}
           </div>
+          {practisedToday >= 2 && (
+            <div data-testid="video-practised-today" className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-[#EEF1EC] px-3 py-1 text-[12px] font-medium text-[#545E56]">
+              <Users className="h-3.5 w-3.5 text-[#839682]" /> {practisedToday} people practised this today
+            </div>
+          )}
           <p className="text-[15px] text-[#545E56] leading-relaxed">{v.description}</p>
         </div>
+
+        {v.program_id && <LessonExtras videoId={id} programId={v.program_id} />}
 
         <RelatedProducts products={relatedProducts} title="Shop this practice" />
       </div>

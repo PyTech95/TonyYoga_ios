@@ -331,6 +331,8 @@ async def get_program(program_id: str, user: Optional[dict] = Depends(get_option
             l["my_submission"] = None
             l["drip_locked"] = False
             l["available_on"] = None
+            l["quiz_questions"] = len((l.pop("quiz", None) or {}).get("questions") or [])
+            l.pop("resources", None)
             continue
         # Base content gate
         if is_staff:
@@ -364,6 +366,11 @@ async def get_program(program_id: str, user: Optional[dict] = Depends(get_option
         l["drip_locked"] = drip_locked
         l["available_on"] = available_on
         l["my_submission"] = best_by_lesson.get(l["id"])
+        # LMS extras: never send quiz answers; resources only for lessons the viewer can open.
+        quiz = l.pop("quiz", None)
+        l["quiz_questions"] = len((quiz or {}).get("questions") or [])
+        if not content_unlocked:
+            l["resource_count"] = len(l.pop("resources", None) or [])
         # Whether the NEXT lesson should unlock depends on this lesson's threshold + best score
         threshold = int(l.get("pass_threshold") or 60)
         my_score = (l["my_submission"] or {}).get("score") or 0

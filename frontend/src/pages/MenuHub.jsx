@@ -1,7 +1,9 @@
 import { Link } from "react-router-dom";
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
-import { Calendar, GraduationCap, Play, Flower2, Mic, ShoppingBag, Sparkles, Ticket, MountainSnow, User, Heart, Trophy, LifeBuoy, Compass, ChevronRight, FileText, Newspaper } from "lucide-react";
+import { Calendar, GraduationCap, Play, Flower2, Mic, ShoppingBag, Sparkles, Ticket, MountainSnow, User, Heart, Trophy, LifeBuoy, Compass, ChevronRight, FileText, Newspaper, Map as MapIcon, CalendarCheck, BookOpenCheck, Receipt, Gift, BadgeCheck, Hotel, Search } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { useFeatures, useMyRoles } from "@/lib/features";
 import PageHeader from "@/components/PageHeader";
 import { useCmsPages } from "@/lib/siteData";
 
@@ -35,6 +37,10 @@ const GROUPS = [
     title: "My account",
     items: [
       { to: "/my-yoga", label: "My Yoga", desc: "Your membership, courses, classes & orders", icon: Flower2, tid: "menu-my-yoga" },
+      { to: "/my-plan", label: "My plan", desc: "Your personal 4-week practice plan", icon: MapIcon, tid: "menu-my-plan" },
+      { to: "/my-classes", label: "My classes", desc: "Bookings, waitlist, history & calendar", icon: CalendarCheck, tid: "menu-my-classes" },
+      { to: "/my-learning", label: "My learning", desc: "Course progress, quizzes & certificates", icon: BookOpenCheck, tid: "menu-my-learning" },
+      { to: "/my-payments", label: "Payments & receipts", desc: "Everything you paid, with receipts", icon: Receipt, tid: "menu-my-payments" },
       { to: "/my-yoga?tab=orders", label: "My orders", desc: "Order status and parcel tracking", icon: ShoppingBag, tid: "menu-orders" },
       { to: "/profile", label: "My profile", desc: "Bookings, membership & settings", icon: User, tid: "menu-profile" },
       { to: "/wishlist", label: "Saved & wishlist", desc: "Things you've saved for later", icon: Heart, tid: "menu-wishlist" },
@@ -46,10 +52,23 @@ const GROUPS = [
 
 export default function MenuHub() {
   const [challengesEnabled, setChallengesEnabled] = useState(false);
+  const { user } = useAuth();
+  const features = useFeatures();
+  const roles = useMyRoles(user);
+  const extraJoin = [
+    ...(features.teachers ? [{ to: "/teachers", label: "Find a teacher", desc: `${features.teacherLabel} teachers near you and online`, icon: Search, tid: "menu-teachers" }] : []),
+    ...(features.gifts ? [{ to: "/gift", label: "Give a membership", desc: "A gift of practice for someone you love", icon: Gift, tid: "menu-gift" }] : []),
+  ];
+  const extraAccount = [
+    ...(roles?.teacher && features.teachers ? [{ to: "/teach", label: "Teacher Hub", desc: "Your classes, students and payouts", icon: BadgeCheck, tid: "menu-teach" }] : []),
+    ...(roles?.partner && features.hotels ? [{ to: "/partner", label: "Partner portal", desc: `${roles.partner.name}: stays, guests and invoices`, icon: Hotel, tid: "menu-partner" }] : []),
+  ];
   // Pages marked "Show in app menu" in Admin → Custom pages, plus the Journal.
   const cmsPages = useCmsPages().filter((p) => p.show_in_app_menu);
+  const base = GROUPS.map((g) => g.title === "Join & train" ? { ...g, items: [...g.items, ...extraJoin] }
+    : g.title === "My account" ? { ...g, items: [...g.items.slice(0, 5), ...extraAccount, ...g.items.slice(5)] } : g);
   const groups = [
-    ...GROUPS.slice(0, 3),
+    ...base.slice(0, 3),
     {
       title: "About Tony Yoga",
       items: [
@@ -57,7 +76,7 @@ export default function MenuHub() {
         { to: "/news", label: "Journal", desc: "News and writing from Tony", icon: Newspaper, tid: "menu-news" },
       ],
     },
-    ...GROUPS.slice(3),
+    ...base.slice(3),
   ];
   useEffect(() => { api.get("/settings/public").then(({ data }) => setChallengesEnabled(!!data.challenges_enabled)).catch(() => {}); }, []);
   return (

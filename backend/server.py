@@ -26,6 +26,15 @@ from routers import access, availability  # noqa: F401
 from routers import analytics  # noqa: F401
 from routers import cms  # noqa: F401  (admin-managed SEO, pages, packages, team)
 from routers import members  # noqa: F401  (Admin → Students & access, My Yoga)
+from routers import plan  # noqa: F401  (personal practice plan, Today, community theme)
+from routers import selfservice  # noqa: F401  (pause/cancel/upgrade, EU withdrawal, refunds, gift memberships)
+from routers import hotels  # noqa: F401  (Hotel & Resort Partner Program)
+from routers import teachers  # noqa: F401  (Teacher Hub: certified teachers, directory, Stripe Connect)
+from routers import classmgmt  # noqa: F401  (class manager: series, rosters, attendance, reports; My classes, calendar feed)
+from routers import lms  # noqa: F401  (sections, resources, quizzes, notes, Q&A, certificates, learning reports)
+from routers import studentself  # noqa: F401  (payments & receipts, practice stats)
+from routers import admininbox  # noqa: F401  (admin "needs attention" inbox)
+from routers import helpdesk  # noqa: F401  (help requests from the AI assistant → admin, email, WhatsApp)
 import native_push  # noqa: F401  (phone notifications for the Android/iPhone apps)
 from routers import ios_commerce  # noqa: F401 — additive, same API and database
 
@@ -54,7 +63,7 @@ async def root():
 
 
 @api.get("/health")
-async def health():
+async def health(request: Request):
     """Deployment diagnostics. No auth — safe to hit from Hostinger, Vercel, curl, etc.
     Confirms MongoDB is reachable AND that the critical collections have content."""
     global _seed_ran, _seed_error
@@ -64,6 +73,9 @@ async def health():
         "db_name": os.environ.get("DB_NAME", ""),
         "mongo_host": _mask_mongo_url(os.environ.get("MONGO_URL", "")),
         "seed_ran": _seed_ran,
+        # False behind nginx = the proxy doesn't pass the visitor's IP (X-Real-IP / X-Forwarded-For);
+        # per-visitor limits then fall back to site-wide ones. See DEPLOYMENT.md → Assistant 2.0.
+        "visitor_ip_header": bool(request.headers.get("x-forwarded-for")),
     }
     if _seed_error:
         result["seed_error"] = _seed_error
@@ -167,7 +179,40 @@ async def on_startup():
     await db.device_tokens.create_index([("user_id", 1), ("active", 1)])
     await db.member_audit.create_index([("user_id", 1), ("at", -1)])
     await db.membership_picks.create_index([("user_id", 1), ("plan_id", 1)])
+    await db.practice_plans.create_index([("user_id", 1), ("status", 1)])
     await db.payment_transactions.create_index([("payment_status", 1), ("created_at", -1)])
+    await db.membership_gifts.create_index("code", unique=True)
+    await db.withdrawals.create_index([("status", 1), ("created_at", -1)])
+    await db.subscriptions.create_index([("status", 1), ("resume_at", 1)])
+    await db.hotel_partners.create_index("slug", unique=True)
+    await db.hotel_partners.create_index("user_ids")
+    await db.hotel_stays.create_index([("partner_id", 1), ("start_date", -1)])
+    await db.hotel_stays.create_index("slug", sparse=True)
+    await db.hotel_guests.create_index([("stay_id", 1), ("email", 1)])
+    await db.teachers.create_index("user_id", unique=True)
+    await db.bookings.create_index([("class_instance_id", 1), ("status", 1)])
+    await db.bookings.create_index([("user_id", 1), ("created_at", -1)])
+    await db.class_instances.create_index([("template_id", 1), ("start_time", 1)])
+    await db.users.create_index("calendar_token", sparse=True)
+    await db.lesson_completions.create_index([("user_id", 1), ("lesson_id", 1)], unique=True)
+    await db.lesson_completions.create_index([("program_id", 1)])
+    await db.quiz_attempts.create_index([("user_id", 1), ("lesson_id", 1)])
+    await db.lesson_notes.create_index([("user_id", 1), ("lesson_id", 1)], unique=True)
+    await db.lesson_questions.create_index([("lesson_id", 1), ("created_at", -1)])
+    await db.lesson_questions.create_index([("status", 1)])
+    await db.help_requests.create_index("id", unique=True)
+    await db.help_requests.create_index([("status", 1), ("created_at", -1)])
+    await db.help_requests.create_index([("user_id", 1), ("created_at", -1)])
+    await db.help_requests.create_index("session_id")
+    await db.teachers.create_index("slug")
+    await db.teacher_offerings.create_index([("teacher_id", 1), ("active", 1)])
+    await db.teacher_enrollments.create_index([("teacher_id", 1), ("user_id", 1)])
+    await db.teacher_enrollments.create_index([("session_id", 1), ("status", 1)])
+    await db.teacher_students.create_index([("teacher_id", 1), ("user_id", 1)], unique=True)
+    try:
+        await hotels.ensure_hotel_catalogue()
+    except Exception as e:
+        logger.warning(f"hotel catalogue seed skipped: {e}")
     try:
         await members.migrate_plan_access()
     except Exception as e:
@@ -230,6 +275,18 @@ async def _reminder_loop():
             await printful_status_sync_tick()
         except Exception as e:
             logger.warning(f"printful status sync tick failed: {e}")
+        try:
+            await selfservice.resume_paused_tick()
+        except Exception as e:
+            logger.warning(f"membership auto-resume tick failed: {e}")
+        try:
+            await hotels.hotels_daily_tick()
+        except Exception as e:
+            logger.warning(f"hotel daily tick failed: {e}")
+        try:
+            await teachers.teachers_tick()
+        except Exception as e:
+            logger.warning(f"teacher tick failed: {e}")
         await asyncio.sleep(60)
 
 

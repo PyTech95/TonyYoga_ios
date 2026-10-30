@@ -28,6 +28,7 @@ SECRET_FIELDS = {
     "instagram_access_token",
     "zoom_client_secret",
     "twilio_auth_token",
+    "meta_whatsapp_token",
     "openai_api_key",
     "gemini_api_key",
     "printful_token",
@@ -61,6 +62,7 @@ ENV_FALLBACK = {
     "twilio_account_sid": "TWILIO_ACCOUNT_SID",
     "twilio_auth_token": "TWILIO_AUTH_TOKEN",
     "twilio_whatsapp_from": "TWILIO_WHATSAPP_FROM",
+    "meta_whatsapp_token": "META_WHATSAPP_TOKEN",
     "openai_api_key": "OPENAI_API_KEY",
     "gemini_api_key": "GEMINI_API_KEY",
     "printful_token": "PRINTFUL_TOKEN",
@@ -118,6 +120,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "twilio_account_sid": "",
     "twilio_auth_token": "",
     "twilio_whatsapp_from": "",      # e.g. whatsapp:+14155238886 (Twilio sandbox)
+    "whatsapp_provider": "twilio",   # twilio | meta (WhatsApp Cloud API)
+    "meta_whatsapp_token": "",       # Meta → WhatsApp → API setup: permanent access token
+    "meta_whatsapp_phone_number_id": "",
+    "meta_whatsapp_template": "",    # approved template with one body variable {{1}} (needed for alerts outside the 24h window)
+    "meta_whatsapp_template_language": "en",
+    "meta_whatsapp_api_version": "v23.0",
     # ---- Video ----
     "default_video_provider": "youtube",  # youtube | vimeo | mux
     "vimeo_access_token": "",
@@ -193,6 +201,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # New-lead WhatsApp alert to the owner (requires WhatsApp/Twilio configured below).
     "lead_alert_enabled": True,
     "lead_alert_whatsapp": "",            # owner number for alerts; falls back to social_whatsapp
+    # What the assistant should also know (policies, FAQs, news) — written by the team.
+    "assistant_knowledge": "",
+    # Help requests the assistant writes for the team (Admin → Help requests).
+    "help_requests_enabled": True,
+    "help_alerts_enabled": True,          # bell + email to admins, WhatsApp when set up
+    "help_alert_whatsapp": "",            # WhatsApp number for help alerts; falls back to lead_alert_whatsapp / social_whatsapp
+    "help_alert_emails": "",              # extra emails (comma separated); admins always get one
     # ---- Phone app push (Android via Firebase Cloud Messaging, iPhone via Apple Push) ----
     "native_push_enabled": True,
     "fcm_service_account_json": "",       # Firebase → Project settings → Service accounts → private key JSON
@@ -204,6 +219,43 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # ---- Member care ----
     "membership_reminder_days": 3,        # remind members this many days before access ends (0 = off)
     "auto_reconcile_payments": True,      # re-check unconfirmed card/PayPal payments every few minutes
+    "pause_enabled": True,                # members may pause their membership themselves
+    "pause_max_months": 3,
+    "stay_offer_percent": 0,              # store credit (% of plan price) offered when someone cancels; 0 = no offer
+    "stay_offer_text": "",
+    "past_due_grace_days": 7,             # access kept this many days after a renewal card payment fails
+    "gifts_enabled": True,                # "Give a membership" on the website
+    # ---- Community ----
+    "monthly_theme": {},                  # {title, text, image, link_label, link_url, month: "YYYY-MM"} shown on Today
+    # ---- Hotel & resort partners ----
+    "hotels_enabled": False,              # public /hotels page + partner portal
+    "hotel_deposit_percent": 30,          # deposit asked when a stay is confirmed
+    "hotel_balance_due_days": 30,         # balance due this many days before the stay
+    "hotel_guest_free_days": 30,          # free online access for guests who scan the stay QR code
+    "hotel_contact_email": "",            # where partner applications are sent (blank = admins)
+    "hotel_guest_plan_id": "",            # plan guests get free (blank = the lowest-priced active plan)
+    "hotel_cancellation_terms": ("The deposit secures the dates. Cancel more than 60 days before the first day for a full refund of the deposit. "
+                                 "Cancel 30 to 60 days before and the deposit is kept. Cancel less than 30 days before and the full programme fee is due. "
+                                 "If Tony Yoga cancels, everything paid is refunded."),
+    "hotel_waiver_text": ("I take part at my own risk. I will tell the teacher about any injury, health condition or pregnancy before class, "
+                          "and I can stop or rest at any time."),
+    # ---- Invoices (hotel partners, teacher fees) ----
+    "invoice_business_name": "Tony Yoga",
+    "invoice_business_address": "",
+    "invoice_tax_id": "",
+    "invoice_footer": "",
+    # ---- Teacher hub ----
+    "teachers_enabled": False,            # public /teachers directory + teacher accounts
+    "teacher_tiers": [
+        {"id": "basic", "name": "Basic", "price": 39, "currency": "eur", "max_offerings": 3, "max_students": 50, "platform_fee_percent": 0,
+         "features": ["Profile in the directory", "Up to 3 classes or courses", "Student list and messages"]},
+        {"id": "pro", "name": "Pro", "price": 89, "currency": "eur", "max_offerings": 15, "max_students": 300, "platform_fee_percent": 0,
+         "features": ["Everything in Basic", "Up to 15 classes or courses", "Featured in the directory", "Online payments to your account"]},
+        {"id": "studio", "name": "Studio", "price": 149, "currency": "eur", "max_offerings": 100, "max_students": 3000, "platform_fee_percent": 0,
+         "features": ["Everything in Pro", "Unlimited classes and courses", "Studio page for several teachers", "Priority support"]},
+    ],
+    "teacher_ce_hours_per_year": 20,      # continuing-education hours a certified teacher logs each year
+    "teacher_certified_label": "Tony-Certified",
 }
 
 # Fields safe to expose to unauthenticated clients (frontend bootstrapping).
@@ -254,6 +306,12 @@ PUBLIC_FIELDS = {
     "assistant_greeting",
     "assistant_popup_delay",
     "social_whatsapp",
+    "monthly_theme",
+    "gifts_enabled",
+    "hotels_enabled",
+    "teachers_enabled",
+    "teacher_tiers",
+    "teacher_certified_label",
 }
 
 
@@ -481,6 +539,73 @@ async def admin_patch_settings(payload: Dict[str, Any], request: Request):
             payload["membership_reminder_days"] = max(0, min(30, int(payload["membership_reminder_days"])))
         except (TypeError, ValueError):
             raise HTTPException(422, "Reminder days must be a number from 0 to 30.")
+    for key, lo, hi in (("pause_max_months", 1, 12), ("stay_offer_percent", 0, 100), ("past_due_grace_days", 0, 30),
+                        ("hotel_deposit_percent", 0, 100), ("hotel_balance_due_days", 0, 120), ("hotel_guest_free_days", 0, 365),
+                        ("teacher_ce_hours_per_year", 0, 200)):
+        if key in payload:
+            try:
+                payload[key] = max(lo, min(hi, int(payload[key])))
+            except (TypeError, ValueError):
+                raise HTTPException(422, f"{key.replace('_', ' ').capitalize()} must be a number from {lo} to {hi}.")
+    for key, limit in (("hotel_cancellation_terms", 2000), ("hotel_waiver_text", 2000), ("invoice_business_name", 120),
+                       ("invoice_business_address", 400), ("invoice_tax_id", 40), ("invoice_footer", 400), ("hotel_contact_email", 200),
+                       ("hotel_guest_plan_id", 80), ("teacher_certified_label", 40)):
+        if key in payload and len(str(payload[key] or "")) > limit:
+            raise HTTPException(422, f"{key.replace('_', ' ').capitalize()} must be {limit} characters or fewer.")
+    if "stay_offer_text" in payload and len(str(payload["stay_offer_text"] or "")) > 300:
+        raise HTTPException(422, "Stay offer text must be 300 characters or fewer.")
+    if "teacher_tiers" in payload:
+        tiers = payload["teacher_tiers"]
+        if not isinstance(tiers, list) or not 1 <= len(tiers) <= 6:
+            raise HTTPException(422, "Teacher tiers must be a list of 1 to 6 tiers.")
+        clean = []
+        for t in tiers:
+            if not isinstance(t, dict) or not __import__("re").match(r"^[a-z0-9_-]{2,20}$", str(t.get("id") or "")):
+                raise HTTPException(422, "Each tier needs an id of 2–20 lowercase letters or numbers.")
+            try:
+                clean.append({"id": t["id"], "name": str(t.get("name") or t["id"])[:40], "price": max(0.0, round(float(t.get("price") or 0), 2)),
+                              "currency": str(t.get("currency") or "eur").lower()[:3], "max_offerings": max(0, int(t.get("max_offerings") or 0)),
+                              "max_students": max(0, int(t.get("max_students") or 0)),
+                              "platform_fee_percent": max(0.0, min(30.0, float(t.get("platform_fee_percent") or 0))),
+                              "stripe_price_id": str(t.get("stripe_price_id") or "")[:80],
+                              "features": [str(f)[:120] for f in (t.get("features") or [])][:8]})
+            except (TypeError, ValueError):
+                raise HTTPException(422, "Tier prices and limits must be numbers.")
+        payload["teacher_tiers"] = clean
+    if "monthly_theme" in payload:
+        theme = payload["monthly_theme"] or {}
+        if not isinstance(theme, dict):
+            raise HTTPException(422, "Monthly theme must be an object.")
+        clean_theme = {}
+        for key, limit in (("title", 80), ("text", 400), ("image", 500), ("link_label", 40), ("link_url", 300), ("month", 7)):
+            value = theme.get(key)
+            if value in (None, ""):
+                continue
+            if not isinstance(value, str) or len(value) > limit:
+                raise HTTPException(422, f"Monthly theme {key.replace('_', ' ')} is too long.")
+            clean_theme[key] = value.strip()
+        if clean_theme.get("link_url") and not (clean_theme["link_url"].startswith("/") or clean_theme["link_url"].startswith("https://")):
+            raise HTTPException(422, "Theme link must start with / or https://")
+        if clean_theme.get("month") and not __import__("re").match(r"^\d{4}-\d{2}$", clean_theme["month"]):
+            raise HTTPException(422, "Theme month must look like 2026-11.")
+        payload["monthly_theme"] = clean_theme
+    if "whatsapp_provider" in payload and payload["whatsapp_provider"] not in ("twilio", "meta"):
+        raise HTTPException(422, "WhatsApp provider must be Twilio or Meta (WhatsApp Cloud API).")
+    if payload.get("meta_whatsapp_phone_number_id") and not str(payload["meta_whatsapp_phone_number_id"]).strip().isdigit():
+        raise HTTPException(422, "The WhatsApp phone number ID is the long number from Meta → WhatsApp → API setup (digits only).")
+    if payload.get("meta_whatsapp_template") and not __import__("re").match(r"^[a-z0-9_]{1,512}$", str(payload["meta_whatsapp_template"])):
+        raise HTTPException(422, "Template names use lowercase letters, numbers and _ only.")
+    if payload.get("meta_whatsapp_template_language") and not __import__("re").match(r"^[a-z]{2,3}(_[A-Z]{2})?$", str(payload["meta_whatsapp_template_language"])):
+        raise HTTPException(422, "Template language looks like en or en_US.")
+    if payload.get("meta_whatsapp_api_version") and not __import__("re").match(r"^v\d{2}\.\d$", str(payload["meta_whatsapp_api_version"])):
+        raise HTTPException(422, "API version looks like v23.0.")
+    if "assistant_knowledge" in payload:
+        if not isinstance(payload["assistant_knowledge"], str) or len(payload["assistant_knowledge"]) > 6000:
+            raise HTTPException(422, "Assistant notes can be up to 6,000 characters.")
+    if payload.get("help_alert_emails"):
+        bad = [e for e in str(payload["help_alert_emails"]).split(",") if e.strip() and not __import__("re").match(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$", e.strip())]
+        if bad:
+            raise HTTPException(422, f"Not an email address: {bad[0].strip()[:60]}")
     if "assistant_provider" in payload and payload["assistant_provider"] not in ("auto", "openai", "gemini"):
         raise HTTPException(422, "AI provider must be Automatic, OpenAI or Gemini.")
     for k in ("assistant_gemini_model", "assistant_gemini_tts_model"):

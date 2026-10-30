@@ -95,7 +95,7 @@ def create_access_token(user_id: str, email: str, role: str, remember: Optional[
     days = 30 if remember else (1 if remember is False else 7)
     payload = {
         "sub": user_id, "email": email, "role": role, "type": "access",
-        "exp": now_utc() + timedelta(days=days),
+        "exp": now_utc() + timedelta(days=days), "iat": int(now_utc().timestamp()),
     }
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
 
@@ -105,14 +105,7 @@ def decode_token(token: str) -> dict:
 
 
 # ---------------- Auth deps ----------------
-async def get_current_user(request: Request) -> dict:
-    token = request.cookies.get("access_token")
-    if not token:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            token = auth[7:]
-    if not token:
-        raise HTTPException(401, "Not authenticated")
+async def _user_for_token(token: str, request: Request) -> dict:
     try:
         payload = decode_token(token)
     except jwt.ExpiredSignatureError:
@@ -122,11 +115,42 @@ async def get_current_user(request: Request) -> dict:
     user = await db.users.find_one({"id": payload["sub"]}, {"_id": 0, "password_hash": 0})
     if not user:
         raise HTTPException(401, "User not found")
+    changed = user.get("password_changed_at")
+    if changed:
+        try:
+            changed_ts = int(datetime.fromisoformat(str(changed).replace("Z", "+00:00")).timestamp())
+        except ValueError:
+            changed_ts = 0
+        if int(payload.get("iat") or 0) < changed_ts:
+            raise HTTPException(401, "Your password was changed. Please sign in again.")
     if user.get("active") is False:
         recovery_paths = {"/api/auth/me", "/api/auth/logout", "/api/me/account/status", "/api/me/account/cancel-deletion"}
         if not user.get("deletion_scheduled_at") or request.url.path not in recovery_paths:
             raise HTTPException(403, "Account is inactive or pending deletion.")
     return user
+
+
+async def get_current_user(request: Request) -> dict:
+    """The signed-in user from the session cookie or the Bearer token (an old cookie never
+    hides a valid Bearer token, e.g. after a password change in the app)."""
+    tokens = []
+    cookie = request.cookies.get("access_token")
+    if cookie:
+        tokens.append(cookie)
+    auth = request.headers.get("Authorization", "")
+    if auth.startswith("Bearer ") and auth[7:] and auth[7:] not in tokens:
+        tokens.append(auth[7:])
+    if not tokens:
+        raise HTTPException(401, "Not authenticated")
+    last = None
+    for token in tokens:
+        try:
+            return await _user_for_token(token, request)
+        except HTTPException as exc:
+            if exc.status_code == 403:
+                raise
+            last = exc
+    raise last
 
 
 async def get_optional_user(request: Request) -> Optional[dict]:
@@ -136,6 +160,47 @@ async def get_optional_user(request: Request) -> Optional[dict]:
     except HTTPException:
         return None
 
+
+
+def _public_ip(value: str) -> str:
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address((value or "").strip())
+    except ValueError:
+        return ""
+    return "" if (ip.is_private or ip.is_loopback or ip.is_unspecified or ip.is_reserved or ip.is_multicast) else str(ip)
+
+
+def client_ip(request: Request) -> str:
+    """The visitor's IP. Behind nginx every request comes from 127.0.0.1, so the proxy's headers are
+    used when the direct peer is local: the last X-Forwarded-For hop (the one nginx appends), then
+    X-Real-IP. A header value must be a public IP address; anything else (a made-up value, a
+    loopback/private address) is ignored. With no usable header the peer address is returned —
+    "unknown visitor" for the per-visitor limits (see is_local_ip)."""
+    import ipaddress
+    peer = request.client.host if request.client else ""
+    try:
+        local = not peer or ipaddress.ip_address(peer).is_private or ipaddress.ip_address(peer).is_loopback
+    except ValueError:
+        local = True
+    if local:
+        hops = [h.strip() for h in (request.headers.get("x-forwarded-for") or "").split(",") if h.strip()]
+        for candidate in ([hops[-1]] if hops else []) + [request.headers.get("x-real-ip") or ""]:
+            ip = _public_ip(candidate)
+            if ip:
+                return ip
+    return peer or "unknown"
+
+
+def is_local_ip(ip: str) -> bool:
+    """True when the visitor's own address is unknown (no usable proxy header): limits that
+    count per visitor then apply site-wide instead."""
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(ip)
+        return a.is_loopback or a.is_private
+    except ValueError:
+        return True
 
 
 async def require_role(request: Request, roles: List[str]) -> dict:

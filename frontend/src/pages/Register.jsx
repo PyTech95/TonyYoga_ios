@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { api, tokenStore } from "@/lib/api";
 import AuthHero from "@/components/AuthHero";
+import { safeNext } from "@/lib/authRouting";
 
 export default function Register() {
   const nav = useNavigate();
@@ -13,6 +14,7 @@ export default function Register() {
   const { t } = useTranslation();
   const [params] = useSearchParams();
   const refCode = params.get("ref") || "";
+  const next = safeNext(params.get("next"));
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -39,7 +41,7 @@ export default function Register() {
       tokenStore.set(data.token);
       await refresh();
       toast.success(t("register.welcome"));
-      nav("/home");
+      nav(next || "/home");
     } catch (err) {
       toast.error(err?.response?.data?.detail || t("register.failed"));
     } finally {
@@ -100,7 +102,7 @@ export default function Register() {
 
         <p className="text-center text-[13px] text-[#6B7269]">
           {t("register.have_account")}{" "}
-          <Link to="/login" data-testid="register-link-login" className="underline text-[#1C221F]">{t("register.sign_in")}</Link>
+          <Link to={next ? `/login?next=${encodeURIComponent(next)}` : "/login"} data-testid="register-link-login" className="underline text-[#1C221F]">{t("register.sign_in")}</Link>
         </p>
       </form>
     </div>

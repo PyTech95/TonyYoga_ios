@@ -1,17 +1,19 @@
 import { useEffect, useState } from "react";
 import { Navigate } from "react-router-dom";
 import { toast } from "sonner";
-import { TrendingUp, Calendar, Percent, Users } from "lucide-react";
+import { TrendingUp, Calendar, Percent, Users, ClipboardCheck } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
 import EmptyState from "@/components/EmptyState";
+import ClassDrawer from "@/pages/admin/classes/ClassDrawer";
 
 export default function Instructor() {
   const { user, ready } = useAuth();
   const [earnings, setEarnings] = useState(null);
   const [classes, setClasses] = useState(null);
+  const [roster, setRoster] = useState(null);
 
   const load = async () => {
     try {
@@ -95,7 +97,12 @@ export default function Instructor() {
                       <div className="text-[10px] mt-1 uppercase tracking-widest font-semibold" style={{ color: c.status === "cancelled" ? "#B25A45" : "#839682" }}>{c.status}</div>
                     </div>
                     {c.status !== "cancelled" && (
-                      <button onClick={() => cancel(c.id)} data-testid={`instructor-cancel-${c.id}`} className="text-xs text-[#B25A45] hover:underline shrink-0">Cancel</button>
+                      <div className="flex flex-col items-end gap-2 shrink-0">
+                        <button onClick={() => setRoster(c.id)} data-testid={`instructor-roster-${c.id}`} className="pill pill-primary !py-1.5 !px-3 !text-[12px]">
+                          <ClipboardCheck className="h-3.5 w-3.5" />Roster &amp; attendance
+                        </button>
+                        <button onClick={() => cancel(c.id)} data-testid={`instructor-cancel-${c.id}`} className="text-xs text-[#B25A45] hover:underline">Cancel</button>
+                      </div>
                     )}
                   </div>
                 </li>
@@ -104,6 +111,7 @@ export default function Instructor() {
           )}
         </section>
       </div>
+      {roster && <ClassDrawer classId={roster} mode={user.role === "admin" ? "admin" : "instructor"} onClose={() => setRoster(null)} onChanged={load} />}
     </div>
   );
 }

@@ -2,13 +2,16 @@ import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import {
   X, Mail, Phone, Link2, Copy, Send, Sparkles, GraduationCap, Ticket, CalendarDays, CreditCard, Package,
-  History, RefreshCw, Plus, Minus, Trash2, CheckCircle2, ShieldOff, Shield, Bell, Smartphone,
+  History, RefreshCw, Plus, Minus, Trash2, CheckCircle2, ShieldOff, Shield, Bell, Smartphone, KeyRound, Wand2, Tag, Undo2,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import {
   fmtDate, fmtDateTime, money, errText, StateChip, inputCls, smallBtn, primaryBtn,
   DurationPicker, defaultDuration, durationPayload, useCatalog,
+  CourseMultiSelect, coursePayload, emptyCourses, hasCourses, TagsEditor, genPassword, paymentState, copyText,
 } from "./memberShared";
+import RefundDialog from "./RefundDialog";
+import MemberLearning from "@/pages/admin/members/MemberLearning";
 
 function Block({ icon: Icon, title, children, action }) {
   return (
@@ -120,7 +123,7 @@ export default function MemberDrawer({ userId, onClose, onChanged }) {
           {!d ? <div className="space-y-3">{[0, 1, 2].map((i) => <div key={i} className="h-28 rounded-2xl bg-[#F2F2EC] animate-pulse" />)}</div> : (
             <>
               {tab === "access" && <AccessTab d={d} cat={cat} run={run} busy={busy} userId={userId} />}
-              {tab === "money" && <MoneyTab d={d} run={run} busy={busy} />}
+              {tab === "money" && <MoneyTab d={d} run={run} busy={busy} reload={() => { load(); onChanged?.(); }} />}
               {tab === "profile" && <ProfileTab d={d} run={run} busy={busy} userId={userId} />}
             </>
           )}
@@ -135,7 +138,7 @@ function AccessTab({ d, cat, run, busy, userId }) {
   const [planId, setPlanId] = useState("");
   const [planDur, setPlanDur] = useState(defaultDuration());
   const [planNotify, setPlanNotify] = useState(true);
-  const [programId, setProgramId] = useState("");
+  const [courseSel, setCourseSel] = useState(emptyCourses());
   const [courseDur, setCourseDur] = useState(defaultDuration());
   const [courseNotify, setCourseNotify] = useState(true);
   const [credits, setCredits] = useState(5);
@@ -239,17 +242,22 @@ function AccessTab({ d, cat, run, busy, userId }) {
             );
           })}
         </ul>
-        <AddPanel label="Give a course" testId="member-add-course">
+        <AddPanel label="Give courses" testId="member-add-course">
           {(close) => (
             <>
-              <select className={inputCls} value={programId} onChange={(e) => setProgramId(e.target.value)} data-testid="member-course-select">
-                <option value="">Choose a course…</option>
-                {cat?.programs.map((p) => <option key={p.id} value={p.id}>{p.title}</option>)}
-              </select>
+              <CourseMultiSelect programs={cat?.programs} value={courseSel} onChange={setCourseSel} testId="member-course-multi" />
               <DurationPicker value={courseDur} onChange={setCourseDur} />
               <NotifyBox value={courseNotify} onChange={setCourseNotify} />
-              <button className={primaryBtn} disabled={busy || !programId} data-testid="member-course-save"
-                onClick={async () => { const r = await run(() => api.post(`/admin/members/${userId}/courses`, { program_id: programId, notify: courseNotify, ...durationPayload(courseDur) }), "Course added"); if (r) close(); }}>Give course</button>
+              <button className={primaryBtn} disabled={busy || !hasCourses(courseSel)} data-testid="member-course-save"
+                onClick={async () => {
+                  const single = !courseSel.all && courseSel.ids.length === 1;
+                  const r = await run(() => api.post(`/admin/members/${userId}/courses`, {
+                    ...(single ? { program_id: courseSel.ids[0] } : coursePayload(courseSel)), notify: courseNotify, ...durationPayload(courseDur),
+                  }), (res) => (res?.data?.count ? `${res.data.count} course(s) added` : "Course added"));
+                  if (r) { setCourseSel(emptyCourses()); close(); }
+                }}>
+                {courseSel.all ? "Give all courses" : courseSel.ids.length > 1 ? `Give ${courseSel.ids.length} courses` : "Give course"}
+              </button>
             </>
           )}
         </AddPanel>
@@ -327,7 +335,8 @@ function AccessTab({ d, cat, run, busy, userId }) {
 }
 
 // ---------------------------------------------------------------------------
-function MoneyTab({ d, run, busy }) {
+function MoneyTab({ d, run, busy, reload }) {
+  const [refund, setRefund] = useState(null);
   const confirmPaid = (p) => {
     const note = window.prompt("Why are you confirming this payment by hand? (e.g. 'Seen in PayPal 28 Oct', 'bank transfer')");
     if (!note || note.trim().length < 3) return;
@@ -339,7 +348,8 @@ function MoneyTab({ d, run, busy }) {
         {d.payments.length === 0 && <p className="text-[13px] text-[#6B7269]">No payments.</p>}
         <ul className="space-y-2">
           {d.payments.map((p) => {
-            const state = p.confirmed ? "paid" : ["expired", "cancelled", "failed"].includes(p.status) ? "abandoned" : "unconfirmed";
+            const st = paymentState(p);
+            const state = st.state;
             return (
               <li key={p.id} className="rounded-xl border border-[#E5E6DF] p-3" data-testid={`member-payment-${p.id}`}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
@@ -349,12 +359,14 @@ function MoneyTab({ d, run, busy }) {
                     {p.last_check_result && <div className="text-[11px] text-[#839682] mt-0.5">Last check: {p.last_check_result}</div>}
                     {p.marked_paid_by && <div className="text-[11px] text-[#839682] mt-0.5">Confirmed by hand by {p.marked_paid_by}</div>}
                   </div>
-                  <StateChip state={state}>{state === "paid" ? (p.delivered ? "Paid · delivered" : "Paid") : state === "abandoned" ? "Not paid" : "Waiting"}</StateChip>
+                  <StateChip state={state}>{st.label}</StateChip>
                 </div>
+                {p.refunded_amount > 0 && <div className="text-[11px] text-[#B25A45] mt-1">Refunded {money(p.refunded_amount, p.currency)}</div>}
                 <div className="mt-2 flex flex-wrap gap-1.5">
-                  {!p.confirmed && <button className={smallBtn} disabled={busy} data-testid={`member-payment-recheck-${p.id}`} onClick={() => run(() => api.post(`/admin/payments/${p.id}/recheck`), (r) => r?.data?.detail || "Checked")}><RefreshCw className="h-3.5 w-3.5" />Check with {p.provider === "paypal" ? "PayPal" : "Stripe"}</button>}
-                  {!p.confirmed && <button className={smallBtn} disabled={busy} onClick={() => confirmPaid(p)}><CheckCircle2 className="h-3.5 w-3.5" />Confirm by hand</button>}
+                  {state === "unconfirmed" && <button className={smallBtn} disabled={busy} data-testid={`member-payment-recheck-${p.id}`} onClick={() => run(() => api.post(`/admin/payments/${p.id}/recheck`), (r) => r?.data?.detail || "Checked")}><RefreshCw className="h-3.5 w-3.5" />Check with {p.provider === "paypal" ? "PayPal" : "Stripe"}</button>}
+                  {state === "unconfirmed" && <button className={smallBtn} disabled={busy} onClick={() => confirmPaid(p)}><CheckCircle2 className="h-3.5 w-3.5" />Confirm by hand</button>}
                   {p.confirmed && <button className={smallBtn} disabled={busy} onClick={() => run(() => api.post(`/admin/payments/${p.id}/redeliver`), "Delivered again (nothing is given twice)")}><RefreshCw className="h-3.5 w-3.5" />Deliver again</button>}
+                  {st.refundable && <button className={smallBtn} disabled={busy} onClick={() => setRefund({ ...p, user_email: d.user.email })} data-testid={`member-payment-refund-${p.id}`}><Undo2 className="h-3.5 w-3.5" />Refund</button>}
                 </div>
               </li>
             );
@@ -381,6 +393,7 @@ function MoneyTab({ d, run, busy }) {
           </ul>
         </Block>
       )}
+      {refund && <RefundDialog payment={refund} onClose={() => setRefund(null)} onDone={reload} />}
     </>
   );
 }
@@ -390,7 +403,15 @@ function ProfileTab({ d, run, busy, userId }) {
   const u = d.user;
   const [form, setForm] = useState({ name: u.name || "", email: u.email || "", phone: u.phone || "", role: u.role || "student", admin_note: u.admin_note || "", store_credit: d.store_credit || 0 });
   const [msg, setMsg] = useState({ title: "", body: "", email: true });
+  const [pw, setPw] = useState({ value: "", send: true, saved: "" });
+  const [tags, setTags] = useState(u.tags || []);
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const tagsChanged = JSON.stringify([...(u.tags || [])].sort()) !== JSON.stringify([...tags].sort());
+  const savePassword = async () => {
+    const r = await run(() => api.patch(`/admin/members/${userId}`, { password: pw.value, send_login_details: pw.send }),
+      pw.send ? "Password set and emailed to the student" : "Password set");
+    if (r) setPw((x) => ({ ...x, saved: x.value, value: "" }));
+  };
   return (
     <>
       <Block icon={Shield} title="Profile">
@@ -416,6 +437,32 @@ function ProfileTab({ d, run, busy, userId }) {
           )}
         </div>
         <div className="text-[12px] text-[#6B7269] flex items-center gap-3"><Smartphone className="h-4 w-4" />Phones with the app: {d.devices.phones} · Browsers with notifications: {d.devices.browsers}</div>
+      </Block>
+
+      <Block icon={KeyRound} title="Password & sign-in">
+        <p className="text-[12px] text-[#6B7269]">Their login ID is <span className="font-semibold text-[#1C221F]">{u.email}</span>. {u.has_password ? "They have a password." : "They haven't set a password yet."} Send a sign-in link (top of this page), or set a password for them here.</p>
+        <div className="flex gap-2">
+          <input type="text" className={`${inputCls} font-mono`} placeholder="New password (at least 8 characters)" value={pw.value} onChange={(e) => setPw((x) => ({ ...x, value: e.target.value }))} data-testid="member-password-input" />
+          <button type="button" className={smallBtn} onClick={() => setPw((x) => ({ ...x, value: genPassword() }))} data-testid="member-password-generate"><Wand2 className="h-3.5 w-3.5" />Generate</button>
+        </div>
+        <label className="flex items-center gap-2 text-[12px] text-[#545E56]"><input type="checkbox" className="h-4 w-4 accent-[#B25A45]" checked={pw.send} onChange={(e) => setPw((x) => ({ ...x, send: e.target.checked }))} data-testid="member-password-send" />Email the new sign-in details to the student</label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button className={primaryBtn} disabled={busy || pw.value.length < 8} onClick={savePassword} data-testid="member-password-save"><KeyRound className="h-3.5 w-3.5" />Set password</button>
+          {pw.saved && (
+            <button className={smallBtn} onClick={() => copyText(`Tony Yoga sign-in\nEmail: ${u.email}\nPassword: ${pw.saved}\nSign in: ${window.location.origin}/login`).then((ok) => ok && toast.success("Copied"))} data-testid="member-password-copy">
+              <Copy className="h-3.5 w-3.5" />Copy sign-in details
+            </button>
+          )}
+        </div>
+      </Block>
+
+      <Block icon={Tag} title="Tags">
+        <TagsEditor tags={tags} onChange={setTags} testId="member-tags" />
+        <button className={primaryBtn} disabled={busy || !tagsChanged} onClick={() => run(() => api.patch(`/admin/members/${userId}`, { tags }), "Tags saved")} data-testid="member-tags-save">Save tags</button>
+      </Block>
+
+      <Block icon={GraduationCap} title="Learning & attendance">
+        <MemberLearning userId={userId} />
       </Block>
 
       <Block icon={Bell} title="Send a message">
