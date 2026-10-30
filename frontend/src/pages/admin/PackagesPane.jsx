@@ -10,14 +10,43 @@ const CURRENCIES = [["eur", "EUR €"], ["usd", "USD $"], ["gbp", "GBP £"]];
 const errText = (e, fallback) => (typeof e?.response?.data?.detail === "string" ? e.response.data.detail : fallback);
 const lines = (s) => String(s || "").split("\n").map((x) => x.trim()).filter(Boolean);
 
+// Courses the admin can attach to a plan or a training.
+let programsCache = null;
+function usePrograms() {
+  const [rows, setRows] = useState(programsCache);
+  useEffect(() => {
+    if (programsCache) return;
+    api.get("/admin/programs").then(({ data }) => { programsCache = (data || []).map((p) => ({ id: p.id, title: p.title })).sort((a, b) => a.title.localeCompare(b.title)); setRows(programsCache); }).catch(() => setRows([]));
+  }, []);
+  return rows || [];
+}
+
+function CourseChecklist({ value, onChange, programs, testId }) {
+  const on = new Set(value || []);
+  return (
+    <div className="flex flex-wrap gap-1.5" data-testid={testId}>
+      {programs.map((p) => (
+        <button key={p.id} type="button" onClick={() => { const n = new Set(on); if (n.has(p.id)) n.delete(p.id); else n.add(p.id); onChange([...n]); }}
+          className={`rounded-full px-3 py-1.5 text-[12px] font-semibold border ${on.has(p.id) ? "bg-[#1C221F] text-white border-[#1C221F]" : "bg-white border-[#E5E6DF] text-[#545E56]"}`}>{p.title}</button>
+      ))}
+      {!programs.length && <span className="text-[12px] text-[#9AA096]">No courses yet.</span>}
+    </div>
+  );
+}
+
 // ---------------------------------------------------------------- Memberships
 function PlanCard({ plan, onSaved }) {
+  const programs = usePrograms();
   // Seeded plans store translation keys ("i18n:…"). Show the English text and only
   // send a field back if it was changed, so untouched plans stay translated.
   const initial = {
     name: tr(plan.name), description: tr(plan.description), features: (plan.features || []).map(tr).join("\n"),
     price: plan.price, currency: plan.currency || "eur", billing_cycle: plan.billing_cycle || "monthly",
     trial_days: plan.trial_days || 0, is_active: plan.is_active !== false,
+    courses_mode: plan.includes_all_courses ? "all" : (plan.choose_courses > 0 ? "choose" : ((plan.included_program_ids || []).length ? "chosen" : "none")),
+    included_program_ids: plan.included_program_ids || [], choose_courses: plan.choose_courses || 1,
+    choosable_program_ids: plan.choosable_program_ids || [], includes_library: plan.includes_library !== false,
+    includes_live_classes: plan.includes_live_classes !== false, live_classes_per_week: plan.live_classes_per_week || 0,
   };
   const [f, setF] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -28,6 +57,17 @@ function PlanCard({ plan, onSaved }) {
     if (f.name !== initial.name) body.name = f.name;
     if (f.description !== initial.description) body.description = f.description;
     if (f.features !== initial.features) body.features = lines(f.features);
+    const accessKeys = ["courses_mode", "included_program_ids", "choose_courses", "choosable_program_ids", "includes_library", "includes_live_classes", "live_classes_per_week"];
+    if (accessKeys.some((k) => JSON.stringify(f[k]) !== JSON.stringify(initial[k]))) {
+      Object.assign(body, {
+        includes_all_courses: f.courses_mode === "all",
+        included_program_ids: f.courses_mode === "chosen" ? f.included_program_ids : [],
+        choose_courses: f.courses_mode === "choose" ? Number(f.choose_courses) || 1 : 0,
+        choosable_program_ids: f.courses_mode === "choose" ? f.choosable_program_ids : [],
+        includes_library: f.includes_library, includes_live_classes: f.includes_live_classes,
+        live_classes_per_week: f.includes_live_classes ? Number(f.live_classes_per_week) || 0 : 0,
+      });
+    }
     if (!Object.keys(body).length) return toast("No changes to save.");
     setBusy(true);
     try { await api.patch(`/admin/membership-plans/${plan.id}`, body); toast.success("Membership saved"); onSaved(); }
@@ -47,7 +87,33 @@ function PlanCard({ plan, onSaved }) {
         <Field label="Free trial (days)"><input type="number" min="0" max="90" className={inputCls} value={f.trial_days} onChange={(e) => set("trial_days", Number(e.target.value) || 0)} /></Field>
       </div>
       <Field label="Description"><textarea rows={2} className={inputCls} value={f.description} onChange={(e) => set("description", e.target.value)} /></Field>
-      <Field label="What's included (one per line)"><textarea rows={4} className={inputCls} value={f.features} onChange={(e) => set("features", e.target.value)} /></Field>
+      <Field label="What's included — text shown to customers (one per line)"><textarea rows={4} className={inputCls} value={f.features} onChange={(e) => set("features", e.target.value)} /></Field>
+      <div className="rounded-xl bg-[#F7F2EC] border border-[#E7D9CB] p-3 space-y-3" data-testid="plan-access">
+        <div className="text-[11px] uppercase tracking-widest font-bold text-[#B25A45]">What members actually get</div>
+        <div className="flex flex-wrap gap-1.5">
+          {[["all", "Every course"], ["chosen", "These courses"], ["choose", "Member chooses"], ["none", "No courses"]].map(([k, l]) => (
+            <button key={k} type="button" onClick={() => set("courses_mode", k)} data-testid={`plan-courses-${k}`}
+              className={`rounded-full px-3 py-1.5 text-[12px] font-semibold border ${f.courses_mode === k ? "bg-[#B25A45] text-white border-[#B25A45]" : "bg-white border-[#E5E6DF]"}`}>{l}</button>
+          ))}
+        </div>
+        {f.courses_mode === "chosen" && <CourseChecklist programs={programs} value={f.included_program_ids} onChange={(v) => set("included_program_ids", v)} testId="plan-included" />}
+        {f.courses_mode === "choose" && (
+          <>
+            <label className="flex items-center gap-2 text-[12px]">Member chooses
+              <input type="number" min="1" max="20" className={`${inputCls} !w-20`} value={f.choose_courses} onChange={(e) => set("choose_courses", e.target.value)} />
+              course(s){f.choosable_program_ids.length ? " from:" : " (any course)"}</label>
+            <CourseChecklist programs={programs} value={f.choosable_program_ids} onChange={(v) => set("choosable_program_ids", v)} testId="plan-choosable" />
+            <p className="text-[11px] text-[#6B7269]">Leave all unselected to let members choose any course. They choose in My Yoga; you can also choose for them in Students.</p>
+          </>
+        )}
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2 text-[12px]">
+          <label className="flex items-center gap-2"><Toggle checked={f.includes_library} onChange={(v) => set("includes_library", v)} />On-demand library</label>
+          <label className="flex items-center gap-2"><Toggle checked={f.includes_live_classes} onChange={(v) => set("includes_live_classes", v)} />Live classes</label>
+          {f.includes_live_classes && (
+            <label className="flex items-center gap-2">Per week<input type="number" min="0" max="50" className={`${inputCls} !w-20`} value={f.live_classes_per_week} onChange={(e) => set("live_classes_per_week", e.target.value)} /><span className="text-[#6B7269]">(0 = unlimited)</span></label>
+          )}
+        </div>
+      </div>
       <div className="flex justify-end"><button onClick={save} disabled={busy} className="pill pill-primary !py-2 !text-[13px]" data-testid="plan-save"><Save className="h-4 w-4" /> {busy ? "Saving…" : "Save"}</button></div>
     </div>
   );
@@ -112,10 +178,11 @@ function Passes({ data, onSaved }) {
 
 // ---------------------------------------------------------------- Teacher training
 function Trainings({ data, onSaved }) {
+  const programs = usePrograms();
   const [rows, setRows] = useState(() => data.map((t) => ({ ...t, includesText: (t.includes || []).join("\n") })));
   const [busy, setBusy] = useState(false);
   const set = (i, k, v) => setRows((r) => r.map((x, j) => (j === i ? { ...x, [k]: v } : x)));
-  const add = () => setRows((r) => [...r, { id: `training-${r.length + 1}`, name: "", price: 0, currency: "eur", hours: 200, dates: "", includesText: "", active: true, isNew: true }]);
+  const add = () => setRows((r) => [...r, { id: `training-${r.length + 1}`, name: "", price: 0, currency: "eur", hours: 200, dates: "", includesText: "", active: true, isNew: true, program_ids: [], access_days: 0 }]);
   const remove = (i) => setRows((r) => r.filter((_, j) => j !== i));
   const save = async () => {
     setBusy(true);
@@ -145,6 +212,13 @@ function Trainings({ data, onSaved }) {
           </div>
           <Field label="Dates"><input className={inputCls} value={t.dates || ""} onChange={(e) => set(i, "dates", e.target.value)} placeholder="23–29 April 2027" /></Field>
           <Field label="What's included (one per line)"><textarea rows={4} className={inputCls} value={t.includesText} onChange={(e) => set(i, "includesText", e.target.value)} /></Field>
+          <div className="rounded-xl bg-[#F7F2EC] border border-[#E7D9CB] p-3 space-y-2">
+            <div className="text-[11px] uppercase tracking-widest font-bold text-[#B25A45]">Online courses opened after payment</div>
+            <CourseChecklist programs={programs} value={t.program_ids || []} onChange={(v) => set(i, "program_ids", v)} testId={`tt-courses-${i}`} />
+            <label className="flex items-center gap-2 text-[12px]">Access for
+              <input type="number" min="0" max="3650" className={`${inputCls} !w-24`} value={t.access_days || 0} onChange={(e) => set(i, "access_days", Number(e.target.value) || 0)} />
+              days <span className="text-[#6B7269]">(0 = lifetime)</span></label>
+          </div>
         </div>
       ))}
       <div className="flex flex-wrap justify-between gap-3">

@@ -174,7 +174,9 @@ async def paypal_create_order(payload: CheckoutRequest, user: dict = Depends(get
         "intent": "CAPTURE",
         "purchase_units": [{
             "reference_id": payload.item_id,
-            "description": meta.get("plan_name") or meta.get("program_title") or f"{payload.item_type} purchase",
+            "description": (meta.get("product_name") or meta.get("plan_name") or meta.get("program_title")
+                            or meta.get("training_name") or meta.get("bundle_title") or meta.get("description")
+                            or "Tony Yoga purchase")[:127],
             "amount": {"currency_code": currency.upper(), "value": value},
             "custom_id": user["id"],
         }],
@@ -329,3 +331,32 @@ async def paypal_webhook(request: Request):
             data = await _paypal_order_details(order_id, token)
             await _complete_paypal_order(order_id, data)
     return {"received": True}
+
+
+async def reconcile_paypal_txn(txn: dict) -> dict:
+    """Ask PayPal about an order that never came back to the website. An order the customer
+    approved (pressed "Pay Now") is captured, exactly as the return page would have done."""
+    order_id = txn.get("session_id") or ""
+    if not order_id.isalnum():
+        return {"result": "skipped", "detail": "Not a PayPal order reference."}
+    try:
+        token = await _paypal_access_token()
+    except HTTPException:
+        return {"result": "skipped", "detail": "PayPal is not configured."}
+    data = await _paypal_order_details(order_id, token)
+    status = data.get("status")
+    if status == "APPROVED":
+        async with httpx.AsyncClient(timeout=20) as client:
+            response = await client.post(f"{await _paypal_base_url()}/v2/checkout/orders/{order_id}/capture",
+                headers={"Content-Type": "application/json", "Authorization": f"Bearer {token}", "PayPal-Request-Id": f"capture-{order_id}"})
+        if response.status_code not in (200, 201) and not (response.status_code == 422 and "ORDER_ALREADY_CAPTURED" in response.text):
+            return {"result": "pending", "detail": f"PayPal approved but capture failed (HTTP {response.status_code})."}
+        data = await _paypal_order_details(order_id, token)
+        status = data.get("status")
+    if status == "COMPLETED":
+        await _complete_paypal_order(order_id, data)
+        return {"result": "paid", "detail": "PayPal confirms the payment; access delivered."}
+    if status == "VOIDED":
+        await db.payment_transactions.update_one({"id": txn["id"]}, {"$set": {"status": "expired"}})
+        return {"result": "expired", "detail": "PayPal order was cancelled."}
+    return {"result": "pending", "detail": f"PayPal says the order is {status or 'unknown'} (customer has not paid)."}

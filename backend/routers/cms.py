@@ -529,7 +529,11 @@ async def get_tt_catalog() -> Dict[str, dict]:
 @api.get("/admin/packages")
 async def admin_get_packages(request: Request):
     await require_role(request, ["admin"])
-    return {"passes": list((await get_pass_catalog()).values()), "teacher_training": list((await get_tt_catalog()).values())}
+    from routers.payments import training_course_ids
+    trainings = []
+    for t in (await get_tt_catalog()).values():
+        trainings.append({**t, "program_ids": await training_course_ids(t), "access_days": int(t.get("access_days") or 0)})
+    return {"passes": list((await get_pass_catalog()).values()), "teacher_training": trainings}
 
 
 @api.put("/admin/packages/passes")
@@ -584,6 +588,9 @@ async def admin_put_tt(payload: Dict[str, Any], request: Request):
             "dates": _text(row.get("dates"), 120, "Dates"),
             "includes": [_text(x, 200, "Included item") for x in _list(row.get("includes"), 30, "Included items") if isinstance(x, str) and x.strip()],
             "active": _bool(row.get("active", True)),
+            # Online courses the training opens after payment, and for how long (0 = lifetime).
+            "program_ids": [x for x in _list(row.get("program_ids") or [], 20, "Courses") if isinstance(x, str) and x],
+            "access_days": int(_num(row.get("access_days") or 0, "Course access days", lo=0, hi=3650)),
         })
     await db.cms_config.update_one({"_id": "teacher_training"}, {"$set": {"items": clean, "updated_at": now_utc().isoformat()}}, upsert=True)
     return list((await get_tt_catalog()).values())
@@ -630,6 +637,24 @@ async def admin_update_plan(plan_id: str, payload: Dict[str, Any], request: Requ
         update["is_active"] = _bool(payload["is_active"])
     if "tier" in payload:
         update["tier"] = _text(payload["tier"], 60, "Tier")
+    # What the plan opens: every course, chosen courses, N courses of the member's choice,
+    # the on-demand library and live classes (optionally a number per week).
+    for key in ("includes_all_courses", "includes_library", "includes_live_classes"):
+        if key in payload:
+            update[key] = _bool(payload[key])
+    for key in ("included_program_ids", "choosable_program_ids"):
+        if key in payload:
+            ids = [x for x in _list(payload[key], 200, "Courses") if isinstance(x, str) and x]
+            known = {p["id"] for p in await db.programs.find({"id": {"$in": ids}}, {"_id": 0, "id": 1}).to_list(200)}
+            if set(ids) - known:
+                raise HTTPException(422, "One of the chosen courses no longer exists.")
+            update[key] = ids
+    if "choose_courses" in payload:
+        update["choose_courses"] = int(_num(payload["choose_courses"] or 0, "Courses to choose", lo=0, hi=20))
+    if "live_classes_per_week" in payload:
+        update["live_classes_per_week"] = int(_num(payload["live_classes_per_week"] or 0, "Live classes per week", lo=0, hi=50))
+    if any(k in update for k in ("includes_all_courses", "included_program_ids", "choose_courses", "includes_library", "includes_live_classes", "live_classes_per_week")):
+        update["access_configured"] = True
     if update:
         update["updated_at"] = now_utc().isoformat()
         await db.membership_plans.update_one({"id": plan_id}, {"$set": update})

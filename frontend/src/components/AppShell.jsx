@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { NavLink, Link, useLocation, Outlet } from "react-router-dom";
+import { NavLink, Link, useLocation, useOutlet } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { Home, Calendar, GraduationCap, ShoppingBag, Menu as MenuIcon, User, Shield, LayoutDashboard, LifeBuoy } from "lucide-react";
+import { Home, Calendar, GraduationCap, ShoppingBag, Menu as MenuIcon, User, Shield, LayoutDashboard, LifeBuoy, Flower2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { HeaderTools, ShellContext } from "@/components/HeaderTools";
@@ -11,7 +11,7 @@ const MEMBER_ITEMS = [
   { to: "/home", labelKey: "nav.home", icon: Home, tid: "nav-home" },
   { to: "/schedule", labelKey: "nav.schedule", icon: Calendar, tid: "nav-schedule" },
   { to: "/programs", labelKey: "nav.programs", icon: GraduationCap, tid: "nav-programs" },
-  { to: "/shop", labelKey: "nav.shop", icon: ShoppingBag, tid: "nav-shop" },
+  { to: "/my-yoga", labelKey: "nav.my_yoga", label: "My Yoga", icon: Flower2, tid: "nav-my-yoga" },
   { to: "/menu", labelKey: "nav.menu", icon: MenuIcon, tid: "nav-menu" },
   { to: "/profile", labelKey: "nav.profile", icon: User, tid: "nav-profile" },
 ];
@@ -34,6 +34,14 @@ const GUEST_ITEMS = [
   { to: '/support', label: 'Help', icon: LifeBuoy, tid: 'nav-help' },
   { to: '/login', label: 'Sign in', icon: User, tid: 'nav-signin' },
 ];
+
+// The page that is fading out keeps showing itself (not the next page) during the transition,
+// so the next page mounts once — no double data loading and no lost typing.
+function FrozenOutlet() {
+  const outlet = useOutlet();
+  const [frozen] = useState(outlet);
+  return frozen;
+}
 
 export default function AppShell() {
   const loc = useLocation();
@@ -153,7 +161,7 @@ export default function AppShell() {
               </div>
             )}
             <ErrorBoundary resetKey={loc.pathname}>
-              <Outlet />
+              <FrozenOutlet />
             </ErrorBoundary>
           </motion.main>
         </AnimatePresence>
@@ -183,7 +191,7 @@ export default function AppShell() {
                           strokeWidth={isActive ? 2 : 1.6}
                         />
                         <span className={`relative block max-w-full truncate px-0.5 text-[10px] leading-tight transition-colors ${isActive ? "font-semibold text-[#B25A45]" : "font-medium text-[#6B7269]"}`}>
-                          {label || t(labelKey)}
+                          {labelKey ? t(labelKey, label) : label}
                         </span>
                       </div>
                     )}

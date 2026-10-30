@@ -34,6 +34,8 @@ const GROUPS = [
   {
     title: "My account",
     items: [
+      { to: "/my-yoga", label: "My Yoga", desc: "Your membership, courses, classes & orders", icon: Flower2, tid: "menu-my-yoga" },
+      { to: "/my-yoga?tab=orders", label: "My orders", desc: "Order status and parcel tracking", icon: ShoppingBag, tid: "menu-orders" },
       { to: "/profile", label: "My profile", desc: "Bookings, membership & settings", icon: User, tid: "menu-profile" },
       { to: "/wishlist", label: "Saved & wishlist", desc: "Things you've saved for later", icon: Heart, tid: "menu-wishlist" },
       { to: "/leaderboard", label: "Leaderboard", desc: "Your streaks and community", icon: Trophy, tid: "menu-leaderboard" },

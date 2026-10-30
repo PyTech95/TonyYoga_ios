@@ -100,3 +100,32 @@ this code to a different database with files in an old external store, copy thos
 bytes into GridFS first, using each existing `storage_path` as the GridFS string
 ID and filename and retaining the content type metadata. Do not delete original
 files before validating the copy. Legacy external files are not silently proxied.
+## Students, access & payments (Oct 2026)
+
+- **Admin → Students, access & payments**: search every student; open one to give or remove
+  courses, memberships, live-class series and class credits (lifetime, N days or until a date),
+  book them into classes, choose the course included in their plan, re-check or confirm payments,
+  email/copy a sign-in link, message them, block sign-in, and see the full change history
+  (`member_audit`). Bulk actions and CSV/Excel import of old-website members (`/api/admin/members/import`,
+  preview first). Endpoints live in `routers/members.py`.
+- **Membership plans now open courses**: each plan has `includes_all_courses`, `included_program_ids`,
+  `choose_courses` (+ `choosable_program_ids`), `includes_library`, `includes_live_classes`,
+  `live_classes_per_week`. On first start, existing plans get these from their feature list
+  (Essential = 1 course of the member's choice + 2 live classes/week; Unlimited/Annual = every course).
+- **Teacher-training packages** open their online course(s) after payment (`program_ids`,
+  `access_days`, set in Packages & prices; until set, core26 → "Core 26+" etc.).
+- **Payment re-check**: every 5 minutes, card (Stripe) and PayPal payments started in the last 3 days
+  that never got confirmed are checked with the provider and delivered if paid (an approved PayPal order
+  is captured). Admin → Settings → Member care can switch this off.
+- **My Yoga** (`/my-yoga`, `GET /api/me/library`): the student's membership, courses, classes,
+  trainings and orders. After paying, buyers land on what they bought.
+- **Notifications** (`notify.py`): purchases, admin changes, order shipping and membership-ending
+  reminders go to the bell, browser push, phone push (when configured) and email.
+- **Phone push** (`native_push.py`): Admin → Settings → Phone app notifications takes a Firebase
+  service-account JSON (Android) and an Apple .p8 key + key ID + team ID (iPhone). Needs `h2`
+  (in requirements.txt). The app registers with `POST /api/push/device`.
+- **Orders**: statuses paid → processing → shipped → delivered (+ cancelled/refunded) with tracking and a
+  timeline; Printful status is synced every 2 hours and by webhook (Admin → Orders → Connect Printful
+  shipping updates).
+- New Python packages: `h2`, `hpack`, `hyperframe` (Apple push over HTTP/2) and `openpyxl`, `et_xmlfile`
+  (Excel import). `deploy/server-deploy.sh` installs them because requirements.txt changed.

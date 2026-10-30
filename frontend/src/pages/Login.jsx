@@ -4,8 +4,7 @@ import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "@/lib/auth";
 import { api } from "@/lib/api";
-import PageHeader from "@/components/PageHeader";
-import LanguageToggle from "@/components/LanguageToggle";
+import AuthHero from "@/components/AuthHero";
 import { getAuthDestination } from "@/lib/authRouting";
 
 export default function Login() {
@@ -59,8 +58,8 @@ export default function Login() {
 
   return (
     <div data-testid="login-page">
-      <PageHeader eyebrow={t("login.eyebrow")} title={t("login.title")} back testId="login-header" showLogo action={<LanguageToggle />} />
-      <form onSubmit={submit} className="mx-auto max-w-md px-6 mt-4 space-y-4" style={{ paddingBottom: "calc(var(--sab) + 2.5rem)" }}>
+      <AuthHero eyebrow={t("login.eyebrow")} title={t("login.title")} testId="login-header" />
+      <form onSubmit={submit} className="mx-auto max-w-md px-6 mt-6 space-y-4" style={{ paddingBottom: "calc(var(--sab) + 2.5rem)" }}>
         <label className="block">
           <span className="eyebrow">{t("login.email")}</span>
           <input

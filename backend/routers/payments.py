@@ -8,8 +8,12 @@ from fastapi import Depends, HTTPException, Request
 from core import api, db, logger, now_utc, gen_id, get_current_user, checkout_return_base
 from models import CheckoutRequest
 from routers.settings import get_setting
-from access_terms import make_grant, fulfill_access, class_pricing, parse_dt, term_window
+from access_terms import make_grant, fulfill_access, class_pricing, parse_dt, term_window, LIFETIME_END
+from labels import plain, plan_name
 import stripe  # official Stripe Python SDK
+
+if os.environ.get("STRIPE_API_BASE"):  # local tests only: point the SDK at a Stripe stand-in
+    stripe.api_base = os.environ["STRIPE_API_BASE"]
 
 # Currencies Stripe treats as zero-decimal (amount is NOT multiplied by 100).
 _ZERO_DECIMAL = {"bif", "clp", "djf", "gnf", "jpy", "kmf", "krw", "mga", "pyg", "rwf", "ugx", "vnd", "vuv", "xaf", "xof", "xpf"}
@@ -101,7 +105,7 @@ async def _create_subscription_session(*, user: dict, plan: dict, origin_url: st
         "metadata": {
             "user_id": user["id"],
             "plan_id": plan["id"],
-            "plan_name": plan.get("name", ""),
+            "plan_name": plan_name(plan),
         },
     }
     if trial_days > 0:
@@ -110,7 +114,7 @@ async def _create_subscription_session(*, user: dict, plan: dict, origin_url: st
     metadata = {
         "user_id": user["id"], "user_email": user["email"],
         "item_type": "membership", "item_id": plan["id"],
-        "quantity": "1", "plan_name": plan.get("name", ""),
+        "quantity": "1", "plan_name": plan_name(plan),
         "trial_days": str(trial_days),
     }
     session = stripe.checkout.Session.create(
@@ -119,7 +123,7 @@ async def _create_subscription_session(*, user: dict, plan: dict, origin_url: st
         line_items=[{
             "price_data": {
                 "currency": currency,
-                "product_data": {"name": plan.get("name") or "Membership"},
+                "product_data": {"name": f"{plan_name(plan)} membership — Tony Yoga"},
                 "unit_amount": unit_amount,
                 "recurring": recurring,
             },
@@ -178,7 +182,7 @@ async def _resolve_price(item_type: str, item_id: str, quantity: int, user_id: s
     if item_type == "membership":
         plan = await db.membership_plans.find_one({"id": item_id})
         if not plan or plan.get("is_active") is False: raise HTTPException(404, "Plan not found")
-        return plan["price"], plan["currency"], {"plan_name": plan["name"]}
+        return plan["price"], plan["currency"], {"plan_name": plan_name(plan), "product_name": f"{plan_name(plan)} membership — Tony Yoga"}
     if item_type == "program":
         program = await db.programs.find_one({"id": item_id})
         if not program: raise HTTPException(404, "Program not found")
@@ -451,13 +455,19 @@ async def checkout_status(session_id: str, request: Request):
     txn = await db.payment_transactions.find_one({"session_id": session_id})
     if not txn:
         raise HTTPException(404, "Transaction not found")
+    return await confirm_stripe_txn(txn)
 
+
+async def confirm_stripe_txn(txn: dict) -> dict:
+    """Ask Stripe about a checkout and fulfil it if it is paid. Safe to call many times
+    (from the success page, the webhook, the automatic re-check and the admin button)."""
+    session_id = txn["session_id"]
     # Subscription-mode sessions: query Stripe directly (retrieve + expand subscription)
     # so we can reflect trial/active status accurately.
     if txn.get("mode") == "subscription":
         stripe.api_key = await _stripe_api_key()
         try:
-            s = stripe.checkout.Session.retrieve(session_id, expand=["subscription"])
+            s = await asyncio.to_thread(stripe.checkout.Session.retrieve, session_id, expand=["subscription"])
         except Exception as e:
             logger.warning(f"Stripe subscription status lookup failed for {session_id}: {e}")
             raise HTTPException(404, "Session not found at Stripe")
@@ -477,6 +487,8 @@ async def checkout_status(session_id: str, request: Request):
                 }},
             )
             await _fulfill_payment(await db.payment_transactions.find_one({"session_id": session_id}))
+        elif s.get("status") == "expired":
+            await db.payment_transactions.update_one({"session_id": session_id, "payment_status": {"$ne": "paid"}}, {"$set": {"status": "expired"}})
         return {
             "status": s.get("status", "open"),
             "payment_status": "paid" if (session_complete and is_active) else "pending",
@@ -484,6 +496,7 @@ async def checkout_status(session_id: str, request: Request):
             "amount_total": s.get("amount_total", 0),
             "currency": s.get("currency", txn.get("currency", "usd")),
             "metadata": s.get("metadata", {}) or {},
+            "return_path": await purchase_link(txn),
         }
 
     try:
@@ -499,14 +512,15 @@ async def checkout_status(session_id: str, request: Request):
             {"session_id": session_id},
             {"$set": {"payment_status": status.payment_status, "status": status.status, "completed_at": now_utc().isoformat()}},
         )
-        await _fulfill_payment(txn)
+        await _fulfill_payment(await db.payment_transactions.find_one({"session_id": session_id}))
     else:
         await db.payment_transactions.update_one(
-            {"session_id": session_id}, {"$set": {"payment_status": status.payment_status, "status": status.status}},
+            {"session_id": session_id, "payment_status": {"$ne": "paid"}}, {"$set": {"payment_status": status.payment_status, "status": status.status}},
         )
     return {
         "status": status.status, "payment_status": status.payment_status,
         "amount_total": status.amount_total, "currency": status.currency, "metadata": dict(status.metadata or {}),
+        "return_path": await purchase_link(txn),
     }
 
 
@@ -514,11 +528,16 @@ async def _receipt_description(txn: dict) -> str:
     it = txn.get("item_type"); iid = txn.get("item_id")
     if it == "membership":
         plan = await db.membership_plans.find_one({"id": iid})
-        tier = ((plan or {}).get("tier") or "").replace("_", " ")
-        return f"{tier.title()} membership".strip() or "Membership"
+        return f"{plan_name(plan)} membership"
     if it == "program":
         prog = await db.programs.find_one({"id": iid})
-        return f"Program — {(prog or {}).get('title', 'Program')}"
+        return f"Course — {(prog or {}).get('title', 'Course')}"
+    if it == "bundle":
+        return f"Course bundle — {(txn.get('metadata') or {}).get('bundle_title') or 'Bundle'}"
+    if it in ("class_one_time", "class_subscription"):
+        return (txn.get("metadata") or {}).get("product_name") or "Live class"
+    if it == "teacher_training":
+        return (txn.get("metadata") or {}).get("training_name") or "Teacher training"
     if it in ("product", "cart"):
         return "Shop order"
     if it == "workshop_deposit":
@@ -550,11 +569,17 @@ async def _send_receipt(txn: dict):
         logger.warning(f"receipt email skipped: {e}")
 
 
+# Purchases whose whole delivery is the access window recorded at checkout.
+_SNAPSHOT_ONLY = {"program", "bundle", "class_one_time", "class_subscription"}
+
+
 async def _fulfill_payment(txn: dict):
     if txn.get("access_snapshot"):
         # Retry-safe even if a previous webhook marked paid before fulfillment failed.
         await fulfill_access(txn)
-        return
+        if txn.get("item_type") in _SNAPSHOT_ONLY or not txn.get("item_type"):
+            await after_payment(txn)
+            return
     if txn.get("item_type") == "private_session" and txn.get("fulfilled_at"):
         return
     item_type = txn["item_type"]; item_id = txn["item_id"]; user_id = txn["user_id"]
@@ -664,10 +689,12 @@ async def _fulfill_payment(txn: dict):
                             await db.products.update_one(
                                 {"id": pid, "fulfilled_order_markers": {"$ne": marker}},
                                 {"$inc": {"stock_qty": -product_qty}, "$addToSet": {"fulfilled_order_markers": marker}})
-                await db.orders.update_one(
-                    {"id": order_id},
-                    {"$set": {"status": "paid", "paid_at": now_utc().isoformat()}},
-                )
+                if order.get("status") in (None, "pending"):
+                    await db.orders.update_one(
+                        {"id": order_id},
+                        {"$set": {"status": "paid", "paid_at": now_utc().isoformat()},
+                         "$push": {"status_history": {"status": "paid", "at": now_utc().isoformat(), "by": "payment"}}},
+                    )
                 # Part B: push paid cart order to Printful for POD fulfillment (best-effort).
                 try:
                     from routers.printful import try_auto_fulfill_order
@@ -711,6 +738,7 @@ async def _fulfill_payment(txn: dict):
             "dates": t.get("dates"), "amount": txn.get("amount"), "currency": txn.get("currency", "eur"),
             "status": "confirmed", "created_at": paid_at,
         }}, upsert=True)
+        await grant_training_courses(txn, t)
     elif item_type in ("drop_in", "class_pack"):
         # Credits bought are recorded on the transaction when checkout starts.
         try:
@@ -761,8 +789,8 @@ async def _fulfill_payment(txn: dict):
         await db.payment_transactions.update_one({"id": txn["id"]}, {"$set": {"fulfilled_at": now_iso}})
         return
 
-    # Branded receipt (best-effort, respects the SMTP enable toggle).
-    await _send_receipt(txn)
+    # Branded receipt + "it's ready" notification (once per payment).
+    await after_payment(txn)
 
 
 @api.post("/admin/stripe/connect")
@@ -856,3 +884,157 @@ async def stripe_webhook(request: Request):
         raise HTTPException(400, "Webhook handling failed")
 
     return {"received": True}
+
+
+# ---------------------------------------------------------------------------
+# After a payment: receipt, member notification, admin alert (exactly once)
+
+async def training_course_ids(training: dict) -> list:
+    """Courses a teacher-training package opens. Until the admin chooses, a package opens the
+    course with the same Core number (core26 -> "Core 26+")."""
+    if "program_ids" in (training or {}):
+        return [p for p in training.get("program_ids") or [] if p]
+    import re
+    m = re.search(r"(\d+)", str((training or {}).get("id") or ""))
+    if not m:
+        return []
+    rows = await db.programs.find({"title": {"$regex": rf"^\s*core\s*{m.group(1)}\b", "$options": "i"}}, {"_id": 0, "id": 1}).to_list(5)
+    return [r["id"] for r in rows]
+
+
+async def grant_training_courses(txn: dict, training: dict):
+    ids = await training_course_ids(training)
+    if not ids:
+        return
+    days = int((training or {}).get("access_days") or 0)
+    start = now_utc()
+    end = (start + timedelta(days=days)).isoformat() if days > 0 else LIFETIME_END
+    for pid in ids:
+        program = await db.programs.find_one({"id": pid}, {"_id": 0, "title": 1})
+        if not program:
+            continue
+        gid = f"{txn['id']}:tt:{pid}"
+        await db.access_grants.update_one({"_id": gid}, {"$setOnInsert": {
+            "id": gid, "user_id": txn["user_id"], "transaction_id": txn["id"], "kind": "program",
+            "target_id": pid, "title": program["title"], "starts_at": start.isoformat(), "ends_at": end,
+            "source": "teacher_training", "return_path": f"/programs/{pid}", "created_at": start.isoformat(),
+        }}, upsert=True)
+
+
+async def purchase_link(txn: dict) -> str:
+    """Where the member should land after paying for this purchase."""
+    it, iid = txn.get("item_type"), txn.get("item_id")
+    grants = ((txn.get("access_snapshot") or {}).get("grants") or [])
+    if it == "program":
+        return f"/programs/{iid}"
+    if len(grants) == 1 and grants[0].get("return_path"):
+        return grants[0]["return_path"]
+    if it in ("product", "cart"):
+        return "/my-yoga?tab=orders"
+    if it in ("drop_in", "class_pack"):
+        return "/schedule"
+    if it == "private_session":
+        return "/private-sessions"
+    return "/my-yoga"
+
+
+async def _paid_message(txn: dict):
+    it = txn.get("item_type")
+    desc = await _receipt_description(txn)
+    if it == "membership":
+        plan = await db.membership_plans.find_one({"id": txn.get("item_id")}, {"_id": 0}) or {}
+        sub = await db.subscriptions.find_one({"user_id": txn["user_id"], "plan_id": txn.get("item_id")}, {"_id": 0}, sort=[("end_date", -1)])
+        until = f" until {str((sub or {}).get('end_date') or '')[:10]}" if sub else ""
+        extra = " Choose your included course in My Yoga." if int(plan.get("choose_courses") or 0) > 0 else " Everything it includes is in My Yoga."
+        return f"Your {plan_name(plan)} membership is active", f"Thank you! Your membership is active{until}.{extra}"
+    if it in ("product", "cart"):
+        return "Order received", "Thank you! We received your payment and will let you know when your order ships."
+    if it == "teacher_training":
+        return "You're registered", f"{desc}: your place is confirmed. Your online course is ready in My Yoga."
+    if it in ("drop_in", "class_pack"):
+        credits = (txn.get("metadata") or {}).get("credits") or ""
+        return "Class credits added", f"{credits} class credit(s) are on your account. Book a class whenever you like."
+    if it in ("workshop_deposit", "workshop_balance"):
+        return "Payment received", f"{desc}: your payment is confirmed."
+    return "It's ready", f"{desc} is now in your account. Enjoy your practice!"
+
+
+async def after_payment(txn: dict):
+    """Receipt email + bell/push notification for the member + alert for admins. Runs once per payment."""
+    if not txn or not txn.get("id"):
+        return
+    claimed = await db.payment_transactions.update_one(
+        {"id": txn["id"], "after_payment_at": {"$exists": False}}, {"$set": {"after_payment_at": now_utc().isoformat()}})
+    if not claimed.modified_count:
+        return
+    await _send_receipt(txn)
+    try:
+        from notify import notify_member
+        title, body = await _paid_message(txn)
+        await notify_member(txn["user_id"], title, body, await purchase_link(txn), email=False,
+                            dedupe_key=f"paid:{txn['id']}")
+        from routers.notifications import push_admins
+        amount = f"{float(txn.get('amount') or 0):.2f} {str(txn.get('currency') or '').upper()}"
+        await push_admins("New payment", f"{txn.get('user_email') or 'A member'} paid {amount} — {await _receipt_description(txn)}",
+                          "/admin?tab=students", dedupe_key=f"admin-paid:{txn['id']}")
+    except Exception as e:
+        logger.warning(f"after-payment notification failed: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Automatic re-check of payments that were started but never confirmed
+# (customer closed the page, the app didn't come back, a webhook was missed…)
+
+_last_reconcile = {"at": 0.0}
+
+
+async def reconcile_transaction(txn: dict) -> dict:
+    """Check one unconfirmed card/PayPal payment with the provider and deliver it if it was paid."""
+    provider = txn.get("provider") or "stripe"
+    if txn.get("payment_status") == "paid":
+        if not txn.get("after_payment_at") and not txn.get("fulfilled_at"):
+            await _fulfill_payment(txn)
+            return {"result": "paid", "detail": "Payment was already confirmed; delivery repeated."}
+        return {"result": "paid", "detail": "Already confirmed."}
+    if provider == "stripe":
+        if not _is_valid_stripe_key(await _stripe_api_key()):
+            return {"result": "skipped", "detail": "Stripe is not configured."}
+        res = await confirm_stripe_txn(txn)
+        if res.get("payment_status") == "paid":
+            return {"result": "paid", "detail": "Stripe confirms the payment; access delivered."}
+        if res.get("status") == "expired":
+            return {"result": "expired", "detail": "The customer never finished paying (Stripe checkout expired)."}
+        return {"result": "pending", "detail": f"Stripe says: {res.get('status')} / {res.get('payment_status')}."}
+    if provider == "paypal":
+        from routers.paypal import reconcile_paypal_txn
+        return await reconcile_paypal_txn(txn)
+    return {"result": "skipped", "detail": f"{provider} payments are checked by their own system."}
+
+
+async def reconcile_payments_tick(force: bool = False):
+    """Every 5 minutes: re-check payments started in the last 3 days that never got confirmed."""
+    import time
+    if not force and time.time() - _last_reconcile["at"] < 300:
+        return
+    _last_reconcile["at"] = time.time()
+    if await get_setting("auto_reconcile_payments") is False:
+        return
+    now = now_utc()
+    rows = await db.payment_transactions.find({
+        "payment_status": {"$ne": "paid"},
+        "status": {"$nin": ["expired", "cancelled", "failed"]},
+        "provider": {"$in": [None, "stripe", "paypal"]},
+        "created_at": {"$gte": (now - timedelta(days=3)).isoformat(), "$lte": (now - timedelta(minutes=3)).isoformat()},
+    }, {"_id": 0}).sort("created_at", -1).to_list(60)
+    for txn in rows:
+        try:
+            result = await reconcile_transaction(txn)
+            await db.payment_transactions.update_one({"id": txn["id"]}, {"$set": {
+                "last_checked_at": now_utc().isoformat(), "last_check_result": result.get("detail")}})
+        except Exception as e:
+            logger.warning(f"payment re-check failed for {txn.get('id')}: {str(getattr(e, 'detail', e))[:200]}")
+    # Older than 3 days and still unpaid: the customer abandoned it.
+    await db.payment_transactions.update_many({
+        "payment_status": {"$ne": "paid"}, "status": {"$nin": ["expired", "cancelled", "failed"]},
+        "provider": {"$in": [None, "stripe", "paypal"]}, "created_at": {"$lt": (now - timedelta(days=3)).isoformat()},
+    }, {"$set": {"status": "expired"}})

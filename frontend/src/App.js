@@ -1,4 +1,5 @@
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { useEffect } from "react";
+import { BrowserRouter, Routes, Route, Navigate, useNavigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import { isNativeApp } from "@/lib/platform";
@@ -41,6 +42,9 @@ import Wishlist from "@/pages/Wishlist";
 import { CheckoutSuccess, CheckoutCancel } from "@/pages/Checkout";
 import Certificate from "@/pages/Certificate";
 import MenuHub from "@/pages/MenuHub";
+import MyYoga from "@/pages/MyYoga";
+import AppWelcome from "@/pages/AppWelcome";
+import { setupNativePush } from "@/lib/nativePush";
 import TeacherTraining from "@/pages/TeacherTraining";
 import PrivateSessions from "@/pages/PrivateSessions";
 import Challenges from "@/pages/Challenges";
@@ -76,14 +80,22 @@ function Landed() {
   return user ? <Navigate to={getAuthDestination(user)} replace /> : <Landing />;
 }
 
+function NativePushBootstrap() {
+  // Ask for phone notifications once a member is signed in (app only; no-op elsewhere).
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  useEffect(() => { if (user) setupNativePush(navigate); }, [user, navigate]);
+  return null;
+}
+
 function AppRoot() {
   // Web: the public marketing/landing page stays at "/".
-  // Mobile app (Capacitor): skip the landing page — go straight to /home if the
-  // user's session is still valid, otherwise to the login / sign-up page.
+  // Mobile app (Capacitor): go straight to /home if the user's session is still valid,
+  // otherwise show the welcome screen (photo, "Create account" / "Sign in").
   const { user, ready, networkError } = useAuth();
   if (isNativeApp()) {
     if (!ready || (networkError && !user)) return <AuthLoading />;
-    return <Navigate to={user ? getAuthDestination(user) : "/login"} replace />;
+    return user ? <Navigate to={getAuthDestination(user)} replace /> : <AppWelcome />;
   }
   return <Marketing />;
 }
@@ -95,6 +107,7 @@ export default function App() {
       <BrowserRouter>
         {!isIOSApp() && <UsageTracker />}
         <IOSCommerceLifecycle />
+        <NativePushBootstrap />
         {/* Default title / description / canonical / robots per route (website only). */}
         <RouteSeo />
         <Routes>
@@ -148,6 +161,7 @@ export default function App() {
             <Route path="/passes" element={<Passes />} />
             <Route path="/wishlist" element={<RequireAuth><Wishlist /></RequireAuth>} />
             <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+            <Route path="/my-yoga" element={<RequireAuth><MyYoga /></RequireAuth>} />
             <Route path="/referrals" element={isIOSApp() ? <Navigate to="/profile" replace /> : <RequireAuth><Referrals /></RequireAuth>} />
             <Route path="/instructor" element={<RequireAuth><Instructor /></RequireAuth>} />
             <Route path="/checkout/success" element={<CheckoutSuccess />} />

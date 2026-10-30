@@ -3,7 +3,7 @@ from typing import Optional, List, Dict, Any
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, EmailStr
 
-from core import api, db, now_utc, gen_id, get_current_user, require_role
+from core import api, db, now_utc, gen_id, get_current_user, require_role, logger
 
 
 class ShippingAddress(BaseModel):
@@ -26,9 +26,63 @@ class OrderCreate(BaseModel):
 
 class OrderStatusUpdate(BaseModel):
     order_id: str
-    status: str  # pending | paid | fulfilled | shipped | completed | cancelled
+    status: str  # pending | paid | processing | shipped | delivered | completed | cancelled | refunded
     tracking_number: Optional[str] = None
+    tracking_url: Optional[str] = None
+    carrier: Optional[str] = None
     notes: Optional[str] = None
+    notify: bool = True
+
+
+ORDER_STATUSES = ["pending", "paid", "processing", "fulfilled", "shipped", "delivered", "completed", "cancelled", "refunded"]
+_CUSTOMER_MESSAGES = {
+    "processing": ("Your order is being prepared", "Good news — your order is in production and will ship soon."),
+    "shipped": ("Your order is on its way", "Your order has shipped."),
+    "delivered": ("Your order was delivered", "Your order has been delivered. Enjoy, and thank you for supporting Tony Yoga!"),
+    "cancelled": ("Your order was cancelled", "Your order was cancelled. If you were charged, the refund is on its way."),
+    "refunded": ("Your order was refunded", "We refunded your order. It can take a few days to show on your statement."),
+}
+
+
+async def set_order_status(order_id: str, status: str, *, tracking_number=None, tracking_url=None, carrier=None,
+                           note=None, by: str = "system", notify: bool = True) -> dict:
+    """Change an order's status, keep a timeline, and tell the customer (bell, push, email)."""
+    if status not in ORDER_STATUSES:
+        raise HTTPException(400, f"Invalid status. Must be one of {ORDER_STATUSES}")
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    now = now_utc().isoformat()
+    update = {"status": status, "updated_at": now}
+    for key, value in (("tracking_number", tracking_number), ("tracking_url", tracking_url), ("carrier", carrier)):
+        if value:
+            update[key] = value.strip()
+    if note:
+        update["admin_notes"] = note
+    if status == "shipped" and not order.get("shipped_at"):
+        update["shipped_at"] = now
+    if status == "delivered":
+        update["delivered_at"] = now
+    changed = status != order.get("status") or any(update.get(k) and update.get(k) != order.get(k) for k in ("tracking_number", "tracking_url"))
+    entry = {"status": status, "at": now, "by": by, "note": note, "tracking_number": update.get("tracking_number")}
+    await db.orders.update_one({"id": order_id}, {"$set": update, "$push": {"status_history": entry}})
+    if notify and changed and status in _CUSTOMER_MESSAGES and order.get("user_id"):
+        title, body = _CUSTOMER_MESSAGES[status]
+        tn = update.get("tracking_number") or order.get("tracking_number")
+        tu = update.get("tracking_url") or order.get("tracking_url")
+        if status == "shipped" and tn:
+            body += f" Tracking number: {tn}."
+        try:
+            from notify import notify_member
+            html_body = None
+            if status == "shipped" and tu:
+                import html as _h
+                html_body = _h.escape(body) + f'<br/><br/><a href="{_h.escape(tu)}">Track your parcel</a>'
+            await notify_member(order["user_id"], title, body, "/my-yoga?tab=orders", email_html=html_body,
+                                dedupe_key=f"order:{order_id}:{status}:{tn or ''}")
+        except Exception as exc:
+            logger.warning("order notification failed (%s)", type(exc).__name__)
+    return {**order, **update}
 
 
 @api.post("/orders/create")
@@ -149,24 +203,42 @@ async def get_order(order_id: str, user: dict = Depends(get_current_user)):
 
 
 @api.get("/admin/orders")
-async def list_all_orders(request: Request, status: Optional[str] = None):
+async def list_all_orders(request: Request, status: Optional[str] = None, q: Optional[str] = None):
     await require_role(request, ["admin", "support"])
-    q = {"status": status} if status else {}
-    return await db.orders.find(q, {"_id": 0}).sort("created_at", -1).to_list(500)
+    query: Dict[str, Any] = {}
+    if status == "open":
+        query["status"] = {"$in": ["paid", "processing", "fulfilled"]}
+    elif status:
+        query["status"] = status
+    if q and q.strip():
+        import re
+        rx = re.escape(q.strip())
+        query["$or"] = [{"user_email": {"$regex": rx, "$options": "i"}}, {"id": {"$regex": rx, "$options": "i"}},
+                        {"shipping_address.name": {"$regex": rx, "$options": "i"}}, {"tracking_number": {"$regex": rx, "$options": "i"}}]
+    rows = await db.orders.find(query, {"_id": 0}).sort("created_at", -1).to_list(500)
+    names = {u["id"]: u.get("name") for u in await db.users.find({"id": {"$in": list({r.get("user_id") for r in rows})}}, {"_id": 0, "id": 1, "name": 1}).to_list(1000)}
+    for r in rows:
+        r["customer_name"] = names.get(r.get("user_id")) or (r.get("shipping_address") or {}).get("name")
+    return rows
+
+
+@api.get("/admin/orders/{order_id}/detail")
+async def admin_order_detail(order_id: str, request: Request):
+    await require_role(request, ["admin", "support"])
+    order = await db.orders.find_one({"id": order_id}, {"_id": 0})
+    if not order:
+        raise HTTPException(404, "Order not found")
+    payment = await db.payment_transactions.find_one(
+        {"$or": [{"item_type": "cart", "item_id": order_id}, {"metadata.order_id": order_id}, {"id": order_id.replace("payment:", "")}]},
+        {"_id": 0, "access_snapshot": 0}, sort=[("created_at", -1)])
+    customer = await db.users.find_one({"id": order.get("user_id")}, {"_id": 0, "id": 1, "name": 1, "email": 1, "phone": 1})
+    return {"order": order, "payment": payment, "customer": customer}
 
 
 @api.post("/admin/orders/status")
 async def update_order_status(payload: OrderStatusUpdate, request: Request):
-    await require_role(request, ["admin", "support"])
-    valid = ["pending", "paid", "fulfilled", "shipped", "completed", "cancelled"]
-    if payload.status not in valid:
-        raise HTTPException(400, f"Invalid status. Must be one of {valid}")
-    update = {"status": payload.status, "updated_at": now_utc().isoformat()}
-    if payload.tracking_number:
-        update["tracking_number"] = payload.tracking_number
-    if payload.notes:
-        update["admin_notes"] = payload.notes
-    r = await db.orders.update_one({"id": payload.order_id}, {"$set": update})
-    if r.matched_count == 0:
-        raise HTTPException(404, "Order not found")
+    admin = await require_role(request, ["admin", "support"])
+    await set_order_status(payload.order_id, payload.status, tracking_number=payload.tracking_number,
+                           tracking_url=payload.tracking_url, carrier=payload.carrier, note=payload.notes,
+                           by=admin.get("email") or "admin", notify=payload.notify)
     return {"ok": True}

@@ -107,8 +107,10 @@ async def _can_play(user: Optional[dict], video: dict, lesson: Optional[dict], p
                     return False
             return True
     # Library generic gate: video.visibility "members" → requires active sub
-    if not program and video.get("visibility") == "members" and await _user_has_active_membership(user):
-        return True
+    if not program and video.get("visibility") == "members":
+        from access_terms import membership_with
+        if await membership_with(user["id"], "includes_library"):
+            return True
     return False
 
 
@@ -730,15 +732,21 @@ async def _accessible_program_ids(user: dict) -> set:
         ids.add(t["item_id"])
     for e in await db.program_enrollments.find({"user_id": user["id"]}, {"_id": 0, "program_id": 1}).to_list(500):
         ids.add(e["program_id"])
-    if await _user_has_active_membership(user):
+    from access_terms import active_memberships, plan_course_ids
+    for sub in await active_memberships(user["id"]):
         for p in await db.programs.find({"price_model": "membership"}, {"_id": 0, "id": 1}).to_list(500):
             ids.add(p["id"])
+        plan = await db.membership_plans.find_one({"id": sub.get("plan_id")}, {"_id": 0})
+        included = await plan_course_ids(plan, user["id"])
+        if included is None:
+            ids.update(p["id"] for p in await db.programs.find({}, {"_id": 0, "id": 1}).to_list(500))
+        else:
+            ids.update(included)
     for g in await db.access_grants.find({"user_id": user["id"], "kind": "program"}, {"_id": 0}).to_list(1000):
         ids.add(g["target_id"])
-    membership = await _user_has_active_membership(user)
     filtered = set()
     for pid in ids:
-        if await _user_owns_program(user, pid) or (membership and await db.programs.find_one({"id": pid, "price_model": "membership"}, {"_id": 0, "id": 1})):
+        if await _user_owns_program(user, pid):
             filtered.add(pid)
     return filtered
 
@@ -755,6 +763,11 @@ async def continue_learning(user: dict = Depends(get_current_user)):
     for prog in programs:
         lessons = await db.program_lessons.find({"program_id": prog["id"]}, {"_id": 0}).sort("order_index", 1).to_list(500)
         if not lessons:
+            out.append({
+                "program_id": prog["id"], "program_title": prog["title"], "cover_image": prog.get("cover_image"),
+                "total": 0, "completed": 0, "percent": 0, "next_lesson": None, "last_activity": None,
+                "has_main_video": bool(prog.get("main_video_url")),
+            })
             continue
         vids = {v["id"]: v for v in await db.videos.find(
             {"id": {"$in": [l["video_id"] for l in lessons]}}, {"_id": 0}).to_list(500)}
@@ -782,7 +795,7 @@ async def continue_learning(user: dict = Depends(get_current_user)):
             "percent": round(completed * 100 / total) if total else 0,
             "next_lesson": next_lesson, "last_activity": last_activity,
         })
-    out = [o for o in out if o["completed"] > 0 or o["next_lesson"]]
+    out = [o for o in out if o["completed"] > 0 or o["next_lesson"] or o.get("total") == 0]
     out.sort(key=lambda o: (o["last_activity"] or ""), reverse=True)
     return out
 
