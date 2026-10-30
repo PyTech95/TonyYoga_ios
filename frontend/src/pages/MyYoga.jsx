@@ -12,6 +12,7 @@ import PageHeader from "@/components/PageHeader";
 import { useCommerceRefresh } from "@/lib/useCommerceRefresh";
 import MembershipManage, { openBillingPortal } from "@/components/MembershipManage";
 import TeacherClassesSection from "@/components/TeacherClassesSection";
+import HelpMessagesSection from "@/components/HelpMessagesSection";
 import { isIOSApp } from "@/lib/iosPlatform";
 
 const QUICK_LINKS = [
@@ -321,6 +322,8 @@ export default function MyYoga() {
             </div>
           </Section>
         )}
+
+        <HelpMessagesSection />
 
         <TeacherClassesSection />
 

@@ -28,6 +28,7 @@ SECRET_FIELDS = {
     "instagram_access_token",
     "zoom_client_secret",
     "twilio_auth_token",
+    "meta_whatsapp_token",
     "openai_api_key",
     "gemini_api_key",
     "printful_token",
@@ -61,6 +62,7 @@ ENV_FALLBACK = {
     "twilio_account_sid": "TWILIO_ACCOUNT_SID",
     "twilio_auth_token": "TWILIO_AUTH_TOKEN",
     "twilio_whatsapp_from": "TWILIO_WHATSAPP_FROM",
+    "meta_whatsapp_token": "META_WHATSAPP_TOKEN",
     "openai_api_key": "OPENAI_API_KEY",
     "gemini_api_key": "GEMINI_API_KEY",
     "printful_token": "PRINTFUL_TOKEN",
@@ -118,6 +120,12 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     "twilio_account_sid": "",
     "twilio_auth_token": "",
     "twilio_whatsapp_from": "",      # e.g. whatsapp:+14155238886 (Twilio sandbox)
+    "whatsapp_provider": "twilio",   # twilio | meta (WhatsApp Cloud API)
+    "meta_whatsapp_token": "",       # Meta → WhatsApp → API setup: permanent access token
+    "meta_whatsapp_phone_number_id": "",
+    "meta_whatsapp_template": "",    # approved template with one body variable {{1}} (needed for alerts outside the 24h window)
+    "meta_whatsapp_template_language": "en",
+    "meta_whatsapp_api_version": "v23.0",
     # ---- Video ----
     "default_video_provider": "youtube",  # youtube | vimeo | mux
     "vimeo_access_token": "",
@@ -193,6 +201,13 @@ DEFAULT_SETTINGS: Dict[str, Any] = {
     # New-lead WhatsApp alert to the owner (requires WhatsApp/Twilio configured below).
     "lead_alert_enabled": True,
     "lead_alert_whatsapp": "",            # owner number for alerts; falls back to social_whatsapp
+    # What the assistant should also know (policies, FAQs, news) — written by the team.
+    "assistant_knowledge": "",
+    # Help requests the assistant writes for the team (Admin → Help requests).
+    "help_requests_enabled": True,
+    "help_alerts_enabled": True,          # bell + email to admins, WhatsApp when set up
+    "help_alert_whatsapp": "",            # WhatsApp number for help alerts; falls back to lead_alert_whatsapp / social_whatsapp
+    "help_alert_emails": "",              # extra emails (comma separated); admins always get one
     # ---- Phone app push (Android via Firebase Cloud Messaging, iPhone via Apple Push) ----
     "native_push_enabled": True,
     "fcm_service_account_json": "",       # Firebase → Project settings → Service accounts → private key JSON
@@ -574,6 +589,23 @@ async def admin_patch_settings(payload: Dict[str, Any], request: Request):
         if clean_theme.get("month") and not __import__("re").match(r"^\d{4}-\d{2}$", clean_theme["month"]):
             raise HTTPException(422, "Theme month must look like 2026-11.")
         payload["monthly_theme"] = clean_theme
+    if "whatsapp_provider" in payload and payload["whatsapp_provider"] not in ("twilio", "meta"):
+        raise HTTPException(422, "WhatsApp provider must be Twilio or Meta (WhatsApp Cloud API).")
+    if payload.get("meta_whatsapp_phone_number_id") and not str(payload["meta_whatsapp_phone_number_id"]).strip().isdigit():
+        raise HTTPException(422, "The WhatsApp phone number ID is the long number from Meta → WhatsApp → API setup (digits only).")
+    if payload.get("meta_whatsapp_template") and not __import__("re").match(r"^[a-z0-9_]{1,512}$", str(payload["meta_whatsapp_template"])):
+        raise HTTPException(422, "Template names use lowercase letters, numbers and _ only.")
+    if payload.get("meta_whatsapp_template_language") and not __import__("re").match(r"^[a-z]{2,3}(_[A-Z]{2})?$", str(payload["meta_whatsapp_template_language"])):
+        raise HTTPException(422, "Template language looks like en or en_US.")
+    if payload.get("meta_whatsapp_api_version") and not __import__("re").match(r"^v\d{2}\.\d$", str(payload["meta_whatsapp_api_version"])):
+        raise HTTPException(422, "API version looks like v23.0.")
+    if "assistant_knowledge" in payload:
+        if not isinstance(payload["assistant_knowledge"], str) or len(payload["assistant_knowledge"]) > 6000:
+            raise HTTPException(422, "Assistant notes can be up to 6,000 characters.")
+    if payload.get("help_alert_emails"):
+        bad = [e for e in str(payload["help_alert_emails"]).split(",") if e.strip() and not __import__("re").match(r"^[^@\s]+@[^@\s]+\.[A-Za-z]{2,}$", e.strip())]
+        if bad:
+            raise HTTPException(422, f"Not an email address: {bad[0].strip()[:60]}")
     if "assistant_provider" in payload and payload["assistant_provider"] not in ("auto", "openai", "gemini"):
         raise HTTPException(422, "AI provider must be Automatic, OpenAI or Gemini.")
     for k in ("assistant_gemini_model", "assistant_gemini_tts_model"):

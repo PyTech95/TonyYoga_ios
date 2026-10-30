@@ -1412,5 +1412,8 @@
   "teachers.status_paused": "Tu perfil está en pausa",
   "teachers.status_paused_body": "Ponte en contacto con Tony Yoga.",
   "teachers.status_removed": "Tu perfil se ha eliminado",
-  "teachers.status_removed_body": "Si tienes preguntas, ponte en contacto con Tony Yoga."
+  "teachers.status_removed_body": "Si tienes preguntas, ponte en contacto con Tony Yoga.",
+  "myyoga.help_title": "Mensajes con el equipo de Tony",
+  "myyoga.help_answered": "Respondido",
+  "myyoga.help_open": "Con el equipo"
 }

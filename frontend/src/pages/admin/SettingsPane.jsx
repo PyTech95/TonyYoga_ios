@@ -86,6 +86,17 @@ function SettingsPane() {
         twilio_account_sid: data.twilio_account_sid || "",
         twilio_auth_token: "",
         twilio_whatsapp_from: data.twilio_whatsapp_from || "",
+        whatsapp_provider: data.whatsapp_provider || "twilio",
+        meta_whatsapp_token: "",
+        meta_whatsapp_phone_number_id: data.meta_whatsapp_phone_number_id || "",
+        meta_whatsapp_template: data.meta_whatsapp_template || "",
+        meta_whatsapp_template_language: data.meta_whatsapp_template_language || "en",
+        meta_whatsapp_api_version: data.meta_whatsapp_api_version || "v23.0",
+        assistant_knowledge: data.assistant_knowledge || "",
+        help_requests_enabled: data.help_requests_enabled !== false,
+        help_alerts_enabled: data.help_alerts_enabled !== false,
+        help_alert_whatsapp: data.help_alert_whatsapp || "",
+        help_alert_emails: data.help_alert_emails || "",
       };
       setForm(next);
       setInit(next);
@@ -124,7 +135,7 @@ function SettingsPane() {
         else payload[k] = form[k];
       });
       // Never send blank secrets.
-      ["stripe_secret_key", "stripe_webhook_secret", "smtp_password", "paypal_client_secret", "instagram_access_token", "zoom_client_secret", "twilio_auth_token", "openai_api_key", "gemini_api_key"].forEach((k) => {
+      ["stripe_secret_key", "stripe_webhook_secret", "smtp_password", "paypal_client_secret", "instagram_access_token", "zoom_client_secret", "twilio_auth_token", "openai_api_key", "gemini_api_key", "meta_whatsapp_token"].forEach((k) => {
         if (!payload[k]) delete payload[k];
       });
       if (Object.keys(payload).length === 0) { toast.info("No changes to save."); setSaving(false); return; }
@@ -335,7 +346,29 @@ function SettingsPane() {
           <div className="flex items-center gap-2 text-[#25D366]"><MessageCircle className="h-4 w-4" /><span className="eyebrow !text-[11px]">Notifications · WhatsApp</span></div>
           <Toggle checked={form.whatsapp_enabled} onChange={(v) => set("whatsapp_enabled", v)} tid="settings-whatsapp-enabled" />
         </div>
-        <p className="text-[12px] text-[#6B7269] -mt-1">Twilio WhatsApp. When on and configured, class reminders and new episodes are also sent over WhatsApp to members who have a number on file.</p>
+        <p className="text-[12px] text-[#6B7269] -mt-1">When on and set up, class reminders and new episodes go over WhatsApp to members with a number on file, and you get WhatsApp alerts for new leads and help requests.</p>
+        <Field label="WhatsApp service">
+          <select data-testid="settings-whatsapp-provider" className={inputCls} value={form.whatsapp_provider} onChange={(e) => set("whatsapp_provider", e.target.value)}>
+            <option value="twilio">Twilio</option>
+            <option value="meta">Meta — WhatsApp Cloud API (WhatsApp Business)</option>
+          </select>
+        </Field>
+        {form.whatsapp_provider === "meta" ? <>
+          <Field label="Access token" hint={secretHint("meta_whatsapp_token")}>
+            <input data-testid="settings-meta-token" type="password" className={inputCls} value={form.meta_whatsapp_token} onChange={(e) => set("meta_whatsapp_token", e.target.value)} placeholder={s.meta_whatsapp_token_set ? "•••• configured" : "Permanent token (Meta → WhatsApp → API setup)"} />
+            {s.meta_whatsapp_token_set && !s.meta_whatsapp_token_from_env && <button type="button" onClick={() => clearSecret("meta_whatsapp_token")} data-testid="clear-meta-token" className="text-[11px] text-[#B25A45] hover:underline mt-1">Clear saved token</button>}
+          </Field>
+          <Field label="Phone number ID" hint="The long number under your WhatsApp business number in Meta → WhatsApp → API setup.">
+            <input data-testid="settings-meta-phone-id" className={inputCls} value={form.meta_whatsapp_phone_number_id} onChange={(e) => set("meta_whatsapp_phone_number_id", e.target.value.trim())} placeholder="123456789012345" inputMode="numeric" />
+          </Field>
+          <div className="grid grid-cols-[1fr_90px_90px] gap-3">
+            <Field label="Alert template (recommended)" hint="WhatsApp only allows free text to people who wrote to you in the last 24 h. Create an approved template with one variable {{1}} and put its name here.">
+              <input data-testid="settings-meta-template" className={inputCls} value={form.meta_whatsapp_template} onChange={(e) => set("meta_whatsapp_template", e.target.value.trim())} placeholder="team_alert" />
+            </Field>
+            <Field label="Language"><input data-testid="settings-meta-template-lang" className={inputCls} value={form.meta_whatsapp_template_language} onChange={(e) => set("meta_whatsapp_template_language", e.target.value.trim())} placeholder="en" /></Field>
+            <Field label="API version"><input data-testid="settings-meta-version" className={inputCls} value={form.meta_whatsapp_api_version} onChange={(e) => set("meta_whatsapp_api_version", e.target.value.trim())} placeholder="v23.0" /></Field>
+          </div>
+        </> : <>
         <Field label="Account SID" hint="From your Twilio Console.">
           <input data-testid="settings-twilio-sid" className={inputCls} value={form.twilio_account_sid} onChange={(e) => set("twilio_account_sid", e.target.value)} placeholder="ACxxxxxxxx" />
         </Field>
@@ -346,6 +379,7 @@ function SettingsPane() {
         <Field label="WhatsApp From number" hint="e.g. whatsapp:+14155238886 (Twilio sandbox) or your approved sender.">
           <input data-testid="settings-twilio-from" className={inputCls} value={form.twilio_whatsapp_from} onChange={(e) => set("twilio_whatsapp_from", e.target.value)} placeholder="whatsapp:+14155238886" />
         </Field>
+        </>}
         <div className="flex gap-2">
           <input data-testid="settings-whatsapp-testto" className={inputCls + " flex-1"} value={waTo} onChange={(e) => setWaTo(e.target.value)} placeholder="+34600123456" />
           <button type="button" onClick={testWhatsapp} disabled={testingWa} data-testid="settings-whatsapp-test" className="pill pill-ghost !py-2 !px-4 !text-[13px] shrink-0">{testingWa ? "Sending…" : "Send test"}</button>
@@ -625,6 +659,34 @@ function AssistantCard({ form, set, inputCls, card, clearSecret }) {
         </div>
       )}
 
+      <Field label="What the assistant should also know" hint="Policies, FAQs, holidays, news — in plain words (up to 6,000 characters). Visitors can ask the assistant about anything here, so don't put private information or links you don't want shared. Prices and courses come from your catalogue automatically.">
+        <textarea data-testid="settings-assistant-knowledge" rows={5} maxLength={6000} className={inputCls} value={form.assistant_knowledge} onChange={(e) => set("assistant_knowledge", e.target.value)}
+          placeholder={"Studio closed 24–26 December.\nRefund policy: …\nWorkshops in Barcelona every spring."} />
+        <span className="text-[10px] text-[#9AA096]">{(form.assistant_knowledge || "").length} / 6000</span>
+      </Field>
+
+      <div className="rounded-xl bg-[#F7F2EC] border border-[#E7D9CB] p-3 space-y-2" data-testid="settings-help-requests">
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] uppercase tracking-widest font-bold text-[#B25A45]">Assistant can write to the team</span>
+          <Toggle checked={form.help_requests_enabled} onChange={(v) => set("help_requests_enabled", v)} tid="settings-help-enabled" />
+        </div>
+        <p className="text-[11px] text-[#6B7269] leading-relaxed">
+          When a student has a problem the assistant can’t solve (paid but no access, payment, sign-in, order, class), it tells them it’s writing to the team and creates a help request in Admin → Help requests. Admins get a notification and an email.
+        </p>
+        <div className="flex items-center justify-between">
+          <span className="text-[12px] text-[#1C221F]">Alert me (notification, email, WhatsApp)</span>
+          <Toggle checked={form.help_alerts_enabled} onChange={(v) => set("help_alerts_enabled", v)} tid="settings-help-alerts" />
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="WhatsApp number for help alerts" hint="Needs WhatsApp set up in the WhatsApp card. Blank = the lead alert number.">
+            <input data-testid="settings-help-whatsapp" className={inputCls} value={form.help_alert_whatsapp} onChange={(e) => set("help_alert_whatsapp", e.target.value)} placeholder={form.lead_alert_whatsapp || form.social_whatsapp || "+34 600 000 000"} />
+          </Field>
+          <Field label="Extra emails (optional)" hint="Comma separated. Admin accounts always get an email.">
+            <input data-testid="settings-help-emails" className={inputCls} value={form.help_alert_emails} onChange={(e) => set("help_alert_emails", e.target.value)} placeholder="tony@example.com" />
+          </Field>
+        </div>
+      </div>
+
       <div className="rounded-xl bg-[#F7F2EC] border border-[#E7D9CB] p-3 space-y-2" data-testid="settings-lead-alert">
         <div className="flex items-center justify-between">
           <span className="text-[11px] uppercase tracking-widest font-bold text-[#B25A45]">WhatsApp me on new leads</span>
@@ -632,7 +694,7 @@ function AssistantCard({ form, set, inputCls, card, clearSecret }) {
         </div>
         <p className="text-[11px] text-[#6B7269] leading-relaxed">
           Get an instant WhatsApp the moment the assistant captures a lead (name, email, phone &amp; interest) so you can follow up fast.
-          Requires WhatsApp (Twilio) to be set up in the WhatsApp settings card.
+          Requires WhatsApp (Twilio or Meta) to be set up in the WhatsApp card.
         </p>
         <Field label="Alert number" hint="Where to send lead alerts. Leave blank to use your WhatsApp number above.">
           <input data-testid="settings-lead-alert-number" className={inputCls} value={form.lead_alert_whatsapp} onChange={(e) => set("lead_alert_whatsapp", e.target.value)} placeholder={form.social_whatsapp || "+34 600 000 000"} />

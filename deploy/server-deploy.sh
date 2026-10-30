@@ -564,6 +564,12 @@ deploy() {
     say  "    then: sudo nginx -t && sudo systemctl reload nginx"
   fi
   site_get /api/pages | grep -q '"slug"' && ok "API reachable through the website (/api/pages)" || warn "couldn't reach /api/pages through the website from the server (check after DNS/SSL)"
+  if site_get /api/health | grep -q '"visitor_ip_header": *false'; then
+    warn "nginx doesn't pass the visitor's IP to the backend (per-visitor limits fall back to site-wide ones). In the location /api block add:"
+    say  "      proxy_set_header X-Real-IP \$remote_addr;"
+    say  "      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;"
+    say  "    then: sudo nginx -t && sudo systemctl reload nginx"
+  fi
   if [ "${WEB_SERVER:-}" = nginx ]; then nginx -t >/dev/null 2>&1 && systemctl reload nginx 2>/dev/null || true; fi
 
   prune_backups

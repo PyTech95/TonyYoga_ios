@@ -1412,5 +1412,8 @@
   "teachers.status_paused": "Il tuo profilo è in pausa",
   "teachers.status_paused_body": "Contatta Tony Yoga.",
   "teachers.status_removed": "Il tuo profilo è stato rimosso",
-  "teachers.status_removed_body": "Per domande contatta Tony Yoga."
+  "teachers.status_removed_body": "Per domande contatta Tony Yoga.",
+  "myyoga.help_title": "Messaggi con il team di Tony",
+  "myyoga.help_answered": "Risposto",
+  "myyoga.help_open": "Al team"
 }

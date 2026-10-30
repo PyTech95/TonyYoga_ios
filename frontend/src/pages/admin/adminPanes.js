@@ -20,6 +20,7 @@ export const ADMIN_PANES = {
   challenges: lazy(() => import("./ChallengesPane")),
   retreats: lazy(() => import("./RetreatsPane")),
   students: lazy(() => import("./members/MembersPane")),
+  help: lazy(() => import("./HelpRequestsPane")),
   classmgr: lazy(() => import("./classes/ClassManager")),
   learning: lazy(() => import("./lms/LearningPane")),
   hotels: lazy(() => import("./HotelsPane")),

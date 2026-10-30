@@ -2,19 +2,31 @@ import { isNativeApp } from "@/lib/platform";
 import { isIOSApp } from "@/lib/iosPlatform";
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { MessageCircle, X, Send, Mic, PhoneOff, Volume2, RotateCcw, ArrowUpRight } from 'lucide-react';
+import { MessageCircle, X, Send, Mic, PhoneOff, Volume2, RotateCcw, ArrowUpRight, CheckCircle2, AlertCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import { assistantError, sessionRead, sessionWrite, streamAnswer } from '@/lib/assistantApi';
 import { useAssistantVoice } from '@/lib/useAssistantVoice';
 import { AssistantLead } from './assistant/AssistantLead';
 import './assistant/assistant.css';
 import { uuid } from '@/lib/utils';
+import { useAuth } from '@/lib/auth';
 
-const publicRoute = path => /^\/(?:$|home$|programs(?:\/|$)|shop(?:\/|$)|schedule(?:\/|$)|memberships$|workshops(?:\/|$)|find-your-path$|meditations$|asanas$|news$|teacher-training$|discover$|passes$)/.test(path);
+// Public pages plus the student's own pages (My Yoga, classes, learning, payments) and Support,
+// so a student with an access or payment problem can ask right where they notice it.
+const publicRoute = path => /^\/(?:$|home$|programs(?:\/|$)|shop(?:\/|$)|schedule(?:\/|$)|memberships$|workshops(?:\/|$)|find-your-path$|meditations$|asanas$|news$|teacher-training$|discover$|passes$|support$|my-yoga$|my-classes$|my-learning$|my-payments$|my-plan$|private-sessions$|gift$|redeem$)/.test(path);
 const newId = () => uuid();
+const WAIT_LINES = ['One moment, let me check…', 'Okay, looking into it…', 'Sure, just a second…'];
+const updateLast = (list, change) => {
+  if (!list.length || list[list.length - 1].role !== 'assistant') return list;
+  const next = [...list];
+  next[next.length - 1] = change(next[next.length - 1]);
+  return next;
+};
 
 export default function AssistantWidget() {
   const { pathname } = useLocation();
+  const auth = useAuth();
+  const userId = auth?.user?.id || null;
   const [cfg, setCfg] = useState(null), [open, setOpen] = useState(false), [teaser, setTeaser] = useState(false);
   const [messages, setMessages] = useState(() => sessionRead('ty_assistant_messages', []).filter(message => !message.pending));
   const [sessionId, setSessionId] = useState(() => sessionRead('ty_assistant_session') || newId());
@@ -24,10 +36,39 @@ export default function AssistantWidget() {
   // In the app, "/" is the welcome screen with its own buttons; keep it clean.
   const visible = publicRoute(pathname) && !(pathname === '/' && isNativeApp()), greeted = useRef(false), openRef = useRef(false);
   const greeting = cfg?.greeting || "I'm Tony's assistant. How can I help you?";
-  const onVoiceReply = useCallback(data => setMessages(old => [...old,
-    { role: 'visitor', text: data.transcript }, { role: 'assistant', text: data.reply, links: data.links, audio_url: data.audio_url }]), []);
-  const voice = useAssistantVoice({ sessionId, greeting, onReply: onVoiceReply, onError: setError });
+  // Voice turns stream into the conversation exactly like typed ones.
+  const onVoiceTurn = useCallback(text => setMessages(old => [...old, { role: 'visitor', text }, { role: 'assistant', text: '', pending: true }]), []);
+  const onVoiceDelta = useCallback(text => setMessages(old => updateLast(old, last => ({ ...last, text: (last.text || '') + text }))), []);
+  const adoptSession = useCallback(id => { if (id) setSessionId(current => (current === id ? current : id)); }, []);
+  const onVoiceDone = useCallback(event => {
+    adoptSession(event.session_id);
+    setMessages(old => updateLast(old, last => ({ ...last, text: event.reply, links: event.links, handoff: event.handoff, pending: false })));
+  }, [adoptSession]);
+  const onVoiceError = useCallback(message => {
+    setError(message);
+    // A turn that stopped half-way keeps what was written; an empty one is removed.
+    setMessages(old => old.filter(m => !(m.pending && !m.text)).map(m => (m.pending ? { ...m, pending: false } : m)));
+  }, []);
+  const voice = useAssistantVoice({ sessionId, greeting, onTurn: onVoiceTurn, onDelta: onVoiceDelta, onDone: onVoiceDone, onError: onVoiceError });
   const { stop, greet } = voice;
+  // A voice turn ended early (End conversation) leaves no half-open message behind.
+  const wasActive = useRef(false);
+  useEffect(() => {
+    if (wasActive.current && !voice.active)
+      setMessages(old => old.filter(m => !(m.pending && !m.text)).map(m => (m.pending ? { ...m, pending: false } : m)));
+    wasActive.current = voice.active;
+  }, [voice.active]);
+  // The conversation belongs to whoever was signed in when it started: a different account (or
+  // signing out) starts a fresh one, so nobody sees someone else's questions or account details.
+  useEffect(() => {
+    if (auth && !auth.ready) return;
+    const owner = sessionRead('ty_assistant_owner', null);
+    if (owner && owner !== userId) {
+      request.current?.abort(); stop(); setSending(false); setError('');
+      setSessionId(newId()); setMessages([]);
+    }
+    sessionWrite('ty_assistant_owner', userId);
+  }, [userId, auth, stop]);
 
   useEffect(() => { api.get('/assistant/config').then(({ data }) => setCfg(data)).catch(() => setCfg(null)); }, []);
   useEffect(() => { sessionWrite('ty_assistant_session', sessionId); }, [sessionId]);
@@ -93,12 +134,11 @@ export default function AssistantWidget() {
     setMessages(old => [...old, { role: 'visitor', text: content }, { role: 'assistant', text: '', pending: true }]);
     try {
       await streamAnswer(content, sessionId, controller.signal, event => {
-        setMessages(old => {
-          const next = [...old], last = { ...next[next.length - 1] };
-          if (event.type === 'delta') last.text += event.text;
-          if (event.type === 'done') Object.assign(last, { text: event.reply, links: event.links, pending: false });
-          next[next.length - 1] = last; return next;
-        });
+        if (event.type !== 'delta' && event.type !== 'done') return;
+        setMessages(old => updateLast(old, last => event.type === 'delta'
+          ? { ...last, text: (last.text || '') + event.text }
+          : { ...last, text: event.reply, links: event.links, handoff: event.handoff, pending: false }));
+        if (event.type === 'done') adoptSession(event.session_id);
       });
     } catch (err) {
       if (!controller.signal.aborted) { setError(assistantError(err)); setInput(content); }
@@ -120,11 +160,19 @@ export default function AssistantWidget() {
       <div className="ty-assistant-status" role="status" data-testid="assistant-status"><span className={`ty-status-dot ty-status-${mode}`} />{status}</div>
       <div ref={scroll} className="ty-assistant-conversation" role="log" aria-live="polite" aria-relevant="additions" data-testid="assistant-conversation">
         {messages.map((message, index) => <div key={index} className={`ty-assistant-message ty-message-${message.role}`} data-testid={`assistant-message-${index}`}>
-          <p data-testid={`assistant-message-text-${index}`}>{message.text || 'Thinking…'}</p>
+          {message.text
+            ? <p data-testid={`assistant-message-text-${index}`}>{message.text}</p>
+            : <p data-testid={`assistant-message-text-${index}`} className="ty-assistant-typing" aria-label="Tony’s assistant is preparing an answer"><span className="ty-assistant-dots" aria-hidden="true"><i /><i /><i /></span>{WAIT_LINES[index % WAIT_LINES.length]}</p>}
+          {message.handoff && <div className={`ty-assistant-handoff ${message.handoff.ok ? '' : 'is-warn'}`} role="status" data-testid={`assistant-handoff-${index}`}>
+            {message.handoff.ok ? <CheckCircle2 size={15} /> : <AlertCircle size={15} />}
+            <span>{message.handoff.ok
+              ? <>{message.handoff.updated ? 'Added to your message for Tony’s team' : 'Sent to Tony’s team'} · ref <strong data-testid={`assistant-handoff-ref-${index}`}>{message.handoff.ref}</strong>. You’ll get an answer by email.</>
+              : 'Not sent to the team yet.'}</span>
+          </div>}
           {message.links?.length > 0 && <div className="ty-assistant-links">{message.links.filter(link => !isIOSApp() || (/^\/(?!\/)/.test(link.href) && !/^\/(?:checkout|referrals)/.test(link.href))).map((link, n) => <Link key={link.href} to={link.href} data-testid={`assistant-link-${index}-${n}`} onClick={() => { stop(); if (window.innerWidth < 640) setOpen(false); }}>{link.label}<ArrowUpRight size={13} /></Link>)}</div>}
           {message.role === 'assistant' && message.text && !message.pending && <button disabled={sending || voice.active} onClick={() => { setError(''); voice.replay(message); }} title="Listen to this answer" aria-label="Listen to this answer" className="ty-assistant-replay" data-testid={`assistant-replay-${index}`}><Volume2 size={14} /></button>}
         </div>)}
-        {messages.length <= 1 && <div className="ty-assistant-suggestions">{['Find a beginner course', 'Explore memberships'].map((label, n) => <button key={label} onClick={() => send(label)} disabled={sending || voice.active} data-testid={`assistant-suggestion-${n}`}>{label}<ArrowUpRight size={14} /></button>)}</div>}
+        {messages.length <= 1 && <div className="ty-assistant-suggestions">{['Find a beginner course', 'Explore memberships', 'Help with my account or a purchase'].map((label, n) => <button key={label} onClick={() => send(label)} disabled={sending || voice.active} data-testid={`assistant-suggestion-${n}`}>{label}<ArrowUpRight size={14} /></button>)}</div>}
         {messages.length >= 5 && <AssistantLead sessionId={sessionId} />}
       </div>
       {error && <div className="ty-assistant-error" role="alert" data-testid="assistant-error">{error}<button aria-label="Dismiss message" onClick={() => setError('')} data-testid="assistant-error-dismiss"><X size={14} /></button></div>}

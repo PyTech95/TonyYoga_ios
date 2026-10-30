@@ -34,6 +34,7 @@ from routers import classmgmt  # noqa: F401  (class manager: series, rosters, at
 from routers import lms  # noqa: F401  (sections, resources, quizzes, notes, Q&A, certificates, learning reports)
 from routers import studentself  # noqa: F401  (payments & receipts, practice stats)
 from routers import admininbox  # noqa: F401  (admin "needs attention" inbox)
+from routers import helpdesk  # noqa: F401  (help requests from the AI assistant → admin, email, WhatsApp)
 import native_push  # noqa: F401  (phone notifications for the Android/iPhone apps)
 from routers import ios_commerce  # noqa: F401 — additive, same API and database
 
@@ -62,7 +63,7 @@ async def root():
 
 
 @api.get("/health")
-async def health():
+async def health(request: Request):
     """Deployment diagnostics. No auth — safe to hit from Hostinger, Vercel, curl, etc.
     Confirms MongoDB is reachable AND that the critical collections have content."""
     global _seed_ran, _seed_error
@@ -72,6 +73,9 @@ async def health():
         "db_name": os.environ.get("DB_NAME", ""),
         "mongo_host": _mask_mongo_url(os.environ.get("MONGO_URL", "")),
         "seed_ran": _seed_ran,
+        # False behind nginx = the proxy doesn't pass the visitor's IP (X-Real-IP / X-Forwarded-For);
+        # per-visitor limits then fall back to site-wide ones. See DEPLOYMENT.md → Assistant 2.0.
+        "visitor_ip_header": bool(request.headers.get("x-forwarded-for")),
     }
     if _seed_error:
         result["seed_error"] = _seed_error
@@ -196,6 +200,10 @@ async def on_startup():
     await db.lesson_notes.create_index([("user_id", 1), ("lesson_id", 1)], unique=True)
     await db.lesson_questions.create_index([("lesson_id", 1), ("created_at", -1)])
     await db.lesson_questions.create_index([("status", 1)])
+    await db.help_requests.create_index("id", unique=True)
+    await db.help_requests.create_index([("status", 1), ("created_at", -1)])
+    await db.help_requests.create_index([("user_id", 1), ("created_at", -1)])
+    await db.help_requests.create_index("session_id")
     await db.teachers.create_index("slug")
     await db.teacher_offerings.create_index([("teacher_id", 1), ("active", 1)])
     await db.teacher_enrollments.create_index([("teacher_id", 1), ("user_id", 1)])

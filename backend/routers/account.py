@@ -30,7 +30,7 @@ _PERSONAL_COLLECTIONS = [
     "ios_purchase_intents", "teacher_training_registrations",
     "device_tokens", "membership_picks", "member_audit", "practice_plans",
     "hotel_guests", "teacher_enrollments", "teacher_students", "teacher_credits", "teachers",
-    "lesson_completions", "quiz_attempts", "lesson_notes", "lesson_questions",
+    "lesson_completions", "quiz_attempts", "lesson_notes", "lesson_questions", "help_requests",
 ]
 
 
@@ -148,7 +148,7 @@ async def _run_purge_deleted_accounts() -> dict:
                     await db[coll].delete_many({"user_id": uid})
                 await db.hotel_partners.update_many({"user_ids": uid}, {"$pull": {"user_ids": uid}})
                 # The following records use email or reference fields rather than user_id.
-                for coll in ("magic_link_tokens", "password_reset_tokens", "deletion_requests", "newsletter_subscribers", "quiz_leads", "ai_leads", "enquiries", "instructor_applications", "referral_invites"):
+                for coll in ("magic_link_tokens", "password_reset_tokens", "deletion_requests", "newsletter_subscribers", "quiz_leads", "ai_leads", "enquiries", "instructor_applications", "referral_invites", "help_requests"):
                     await db[coll].delete_many({"$or": [{"user_id": uid}, {"email": email}]})
                 await db.referrals.delete_many({"$or": [{"referrer_id": uid}, {"referred_user_id": uid}]})
                 for coll in ("payment_transactions", "orders", "ios_transactions"):

@@ -9,15 +9,17 @@ from uuid import UUID
 from fastapi import Request, HTTPException, Depends, UploadFile, File, Form
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, EmailStr, Field
-from core import api, db, gen_id, now_utc, logger, require_role, get_optional_user
+from core import api, db, gen_id, now_utc, logger, require_role, get_optional_user, client_ip
 from routers.settings import get_setting
 from assistant_engine import reply_stream, request_guard, check_limits
-from assistant_audio import speech, transcribe, audio_mime
+from assistant_audio import speech, transcribe, audio_mime, read_upload, transcribe_raw
 
 
 class ChatIn(BaseModel):
     session_id: Optional[UUID] = None
     message: str = Field(min_length=1, max_length=2000)
+    mode: Optional[str] = 'text'          # 'text' (chat window) | 'voice' (spoken)
+    lang: Optional[str] = Field(None, max_length=12)
 
 
 class LinkOut(BaseModel):
@@ -33,6 +35,7 @@ class ReplyOut(BaseModel):
     audio_url: Optional[str] = None
     audio_error: Optional[str] = None
     end_conversation: bool = False
+    handoff: Optional[dict] = None
 
 
 class TTSIn(BaseModel):
@@ -58,37 +61,51 @@ async def assistant_config():
             'whatsapp': await get_setting('social_whatsapp') or '', 'ai_disclosure': True}
 
 
-async def answer(payload, user):
+def _ctx(request, payload=None, lang=None):
+    return {'ip': client_ip(request), 'lang': (lang or getattr(payload, 'lang', None) or '')[:12]}
+
+
+async def answer(payload, user, ctx=None):
     if not payload.message.strip():
         raise HTTPException(400, 'Please enter a question.')
     result = None
-    async for event in reply_stream(str(payload.session_id) if payload.session_id else None, payload.message.strip(), user):
+    async for event in reply_stream(str(payload.session_id) if payload.session_id else None, payload.message.strip(), user,
+                                    mode=payload.mode or 'text', ctx=ctx):
         if event['type'] == 'done':
             result = event
     return result
 
 
 @api.post('/assistant/chat', response_model=ReplyOut, dependencies=[Depends(request_guard)])
-async def assistant_chat(payload: ChatIn, user: Optional[dict] = Depends(get_optional_user)):
-    return await answer(payload, user)
+async def assistant_chat(payload: ChatIn, request: Request, user: Optional[dict] = Depends(get_optional_user)):
+    return await answer(payload, user, _ctx(request, payload))
+
+
+SSE_HEADERS = {'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'}
+
+
+def _sse(event):
+    return 'data: ' + json.dumps(event) + '\n\n'
 
 
 @api.post('/assistant/chat/stream', dependencies=[Depends(request_guard)])
-async def assistant_chat_stream(payload: ChatIn, user: Optional[dict] = Depends(get_optional_user)):
+async def assistant_chat_stream(payload: ChatIn, request: Request, user: Optional[dict] = Depends(get_optional_user)):
     if not payload.message.strip():
         raise HTTPException(400, 'Please enter a question.')
     sid = str(payload.session_id) if payload.session_id else gen_id()
     await check_limits(sid)
+    ctx = _ctx(request, payload)
 
     async def events():
+        # Something on screen at once, before the AI's first word.
+        yield _sse({'type': 'start', 'session_id': sid})
         try:
-            async with aclosing(reply_stream(sid, payload.message.strip(), user)) as stream:
+            async with aclosing(reply_stream(sid, payload.message.strip(), user, mode=payload.mode or 'text', ctx=ctx)) as stream:
                 async for event in stream:
                     yield 'data: ' + json.dumps(event) + '\n\n'
         except HTTPException as exc:
             yield 'data: ' + json.dumps({'type': 'error', 'message': exc.detail}) + '\n\n'
-    return StreamingResponse(events(), media_type='text/event-stream',
-                             headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
+    return StreamingResponse(events(), media_type='text/event-stream', headers=SSE_HEADERS)
 
 
 @api.post('/assistant/tts', dependencies=[Depends(request_guard)])
@@ -112,21 +129,141 @@ async def assistant_audio(audio_id: UUID):
     return Response(bytes(doc['audio']), media_type=doc.get('mime') or 'audio/mpeg', headers={'Cache-Control': 'private, max-age=3600'})
 
 
+END_RE = re.compile(r"(?:bye|goodbye|bye bye|stop|stop listening|end (?:the )?(?:call|conversation)|that'?s all|adiós|hasta luego|ciao|arrivederci)[.!\s]*", re.I)
+
+
 @api.post('/assistant/voice', response_model=ReplyOut, dependencies=[Depends(request_guard)])
-async def assistant_voice(audio: UploadFile = File(...), session_id: Optional[UUID] = Form(None),
-                          speak: bool = Form(True), user: Optional[dict] = Depends(get_optional_user)):
+async def assistant_voice(request: Request, audio: UploadFile = File(...), session_id: Optional[UUID] = Form(None),
+                          speak: bool = Form(True), lang: Optional[str] = Form(None), user: Optional[dict] = Depends(get_optional_user)):
     await check_limits(str(session_id) if session_id else None)
     transcript = await transcribe(audio)
-    result = await answer(ChatIn(session_id=session_id, message=transcript), user)
+    result = await answer(ChatIn(session_id=session_id, message=transcript, mode='voice'), user, _ctx(request, lang=lang))
     result['transcript'] = transcript
-    result['end_conversation'] = bool(re.fullmatch(
-        r"(?:bye|goodbye|bye bye|stop|stop listening|end (?:the )?(?:call|conversation)|that'?s all|adiós|hasta luego)[.!\s]*", transcript.strip(), re.I))
+    result['end_conversation'] = bool(END_RE.fullmatch(transcript.strip()))
     if speak:
         try:
             result['audio_url'] = await speech(result['reply'])
         except HTTPException as exc:
             result['audio_error'] = exc.detail
     return result
+
+
+# Short phrases played the moment the visitor stops talking, while the answer is prepared.
+FILLERS = {
+    'en': ['Okay, one moment.', 'Sure, let me check.', 'Alright, just a second.'],
+    'es': ['Vale, un momento.', 'Claro, déjame ver.', 'De acuerdo, un segundo.'],
+    'it': ['Va bene, un attimo.', 'Certo, controllo subito.', 'Ok, un secondo.'],
+    'fr': ["D'accord, un instant.", 'Bien sûr, je regarde.', 'Une seconde.'],
+    'de': ['Okay, einen Moment.', 'Klar, ich schaue nach.', 'Eine Sekunde, bitte.'],
+    'pt': ['Certo, um momento.', 'Claro, deixa-me ver.', 'Só um segundo.'],
+    'nl': ['Oké, een moment.', 'Ik kijk even.', 'Een seconde.'],
+    'hi': ['ठीक है, एक पल।', 'ज़रूर, मैं देखता हूँ।', 'बस एक सेकंड।'],
+}
+
+
+@api.get('/assistant/fillers', dependencies=[Depends(request_guard)])
+async def assistant_fillers(lang: str = 'en'):
+    texts = FILLERS.get((lang or 'en')[:2].lower(), FILLERS['en'])
+    results = await asyncio.gather(*[speech(t) for t in texts], return_exceptions=True)
+    return {'fillers': [{'text': t, 'audio_url': r} for t, r in zip(texts, results) if isinstance(r, str)],
+            'mime': await audio_mime()}
+
+
+# Only a full stop followed by a space counts while streaming ("49.90" may still be arriving).
+_SENTENCE_END = re.compile(r'[.!?…।。！？](?=\s)')
+
+
+class SpeechChunker:
+    """Cut the streamed answer into at most three pieces for speech: the first sentence as soon as
+    it is complete (so the voice starts early), then the rest in one or two longer pieces."""
+
+    def __init__(self):
+        self.buf, self.count = '', 0
+
+    def feed(self, text):
+        self.buf += text
+        out = []
+        while True:
+            piece = self._take()
+            if not piece:
+                return out
+            out.append(piece)
+
+    def _take(self):
+        if self.count >= 2:
+            return None
+        want = 14 if self.count == 0 else 240
+        for m in _SENTENCE_END.finditer(self.buf):
+            if m.end() >= want:
+                return self._cut(m.end())
+        if self.count == 0 and len(self.buf) > 160:
+            cut = max(self.buf.rfind(', ', 0, 160), self.buf.rfind(' ', 0, 160))
+            return self._cut(cut + 1 if cut > 40 else 160)
+        return None
+
+    def _cut(self, at):
+        piece, self.buf = self.buf[:at].strip(), self.buf[at:]
+        self.count += 1
+        return piece or None
+
+    def flush(self):
+        piece, self.buf = self.buf.strip(), ''
+        return piece
+
+
+@api.post('/assistant/voice/stream', dependencies=[Depends(request_guard)])
+async def assistant_voice_stream(request: Request, audio: UploadFile = File(...), session_id: Optional[UUID] = Form(None),
+                                 speak: bool = Form(True), lang: Optional[str] = Form(None),
+                                 user: Optional[dict] = Depends(get_optional_user)):
+    """Voice turn as a stream: transcript → answer text as it is written → audio pieces → end."""
+    sid = str(session_id) if session_id else gen_id()
+    await check_limits(sid)
+    raw, extension = await read_upload(audio)
+    ctx = _ctx(request, lang=lang)
+
+    async def events():
+        yield _sse({'type': 'start', 'session_id': sid})
+        tasks, sent = [], 0
+        try:
+            transcript = await transcribe_raw(raw, extension)
+            yield _sse({'type': 'transcript', 'text': transcript, 'session_id': sid})
+            chunker = SpeechChunker()
+
+            def schedule(text):
+                if speak and text and text.strip():
+                    tasks.append(asyncio.create_task(speech(text)))
+
+            async def audio_event(task, index):
+                try:
+                    return {'type': 'audio', 'url': await task, 'index': index}
+                except HTTPException as exc:
+                    return {'type': 'audio_error', 'message': exc.detail, 'index': index}
+                except Exception:
+                    return {'type': 'audio_error', 'message': 'Voice playback is unavailable. Your answer is in the conversation.', 'index': index}
+
+            async with aclosing(reply_stream(sid, transcript, user, mode='voice', ctx=ctx)) as stream:
+                async for event in stream:
+                    if event['type'] == 'delta':
+                        for piece in chunker.feed(event['text']):
+                            schedule(piece)
+                        yield _sse(event)
+                        while sent < len(tasks) and tasks[sent].done():
+                            yield _sse(await audio_event(tasks[sent], sent))
+                            sent += 1
+                    elif event['type'] == 'done':
+                        schedule(chunker.flush())
+                        yield _sse({**event, 'transcript': transcript, 'end_conversation': bool(END_RE.fullmatch(transcript.strip()))})
+            while sent < len(tasks):
+                yield _sse(await audio_event(tasks[sent], sent))
+                sent += 1
+            yield _sse({'type': 'end', 'audio_count': len(tasks), 'mime': await audio_mime()})
+        except HTTPException as exc:
+            yield _sse({'type': 'error', 'message': exc.detail})
+        finally:
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+    return StreamingResponse(events(), media_type='text/event-stream', headers=SSE_HEADERS)
 
 
 @api.get('/admin/assistant/usage')

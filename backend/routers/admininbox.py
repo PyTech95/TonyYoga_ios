@@ -22,6 +22,7 @@ async def admin_inbox(request: Request):
         c["booked"] = await db.bookings.count_documents({"class_instance_id": c["id"], "status": "confirmed"})
         c["waitlist"] = await db.bookings.count_documents({"class_instance_id": c["id"], "status": "waitlist"})
     items = [
+        {"key": "help", "label": "Help requests from students", "count": await db.help_requests.count_documents({"status": {"$in": ["new", "in_progress"]}}), "tab": "help"},
         {"key": "payments", "label": "Payments waiting for confirmation", "count": unconfirmed, "tab": "students", "view": "payments"},
         {"key": "past_due", "label": "Members whose card renewal failed", "count": await db.subscriptions.count_documents({"status": "past_due"}), "tab": "students"},
         {"key": "withdrawals", "label": "EU withdrawal requests", "count": await db.withdrawals.count_documents({"status": "received"}), "tab": "students", "view": "withdrawals"},

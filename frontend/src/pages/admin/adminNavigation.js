@@ -1,4 +1,4 @@
-import { Hotel, BadgeCheck, CalendarCheck, BookOpenCheck, LayoutDashboard, Youtube, Package, GraduationCap, Calendar, ClipboardCheck, Mic, MountainSnow, Gift, Settings, Upload, Flower2, Sparkles, ShoppingBag, Truck, Image, FileText, MessageSquareQuote, Smartphone, CalendarClock, CreditCard, Search, FilePlus2, Newspaper, Users, Tags } from "lucide-react";
+import { LifeBuoy, Hotel, BadgeCheck, CalendarCheck, BookOpenCheck, LayoutDashboard, Youtube, Package, GraduationCap, Calendar, ClipboardCheck, Mic, MountainSnow, Gift, Settings, Upload, Flower2, Sparkles, ShoppingBag, Truck, Image, FileText, MessageSquareQuote, Smartphone, CalendarClock, CreditCard, Search, FilePlus2, Newspaper, Users, Tags } from "lucide-react";
 
 export const ADMIN_GROUPS = [
   { label: "Workspace", items: [{ key: "stats", label: "Overview", icon: LayoutDashboard }] },
@@ -27,6 +27,7 @@ export const ADMIN_GROUPS = [
   ] },
   { label: "Community", items: [
     { key: "students", label: "Students, access & payments", icon: GraduationCap },
+    { key: "help", label: "Help requests (from the assistant)", icon: LifeBuoy },
     { key: "teachers", label: "Teacher Hub", icon: BadgeCheck },
     { key: "hotels", label: "Hotels & resorts", icon: Hotel },
     { key: "apps", label: "Applications", icon: ClipboardCheck },

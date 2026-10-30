@@ -1,15 +1,35 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { getSpeech, voiceAnswer, assistantError } from './assistantApi';
+import { getSpeech, getFillers, voiceStream, assistantError } from './assistantApi';
 import { recordTurn } from './assistantRecorder';
 
 const audioUrl = path => `${process.env.REACT_APP_BACKEND_URL}${path}`;
+// 44-byte silent WAV: played once inside the tap so iPhones allow this audio element to play later.
+const SILENCE = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
 
-export const useAssistantVoice = ({ sessionId, greeting, onReply, onError }) => {
+/**
+ * Voice conversation. Each turn streams: the visitor's words appear at once, a short
+ * "okay, one moment" plays immediately, the answer is written as it arrives and its first
+ * sentence is spoken as soon as it is ready (the rest follows in order).
+ *
+ * Callbacks: onTurn(transcript) · onDelta(text) · onDone(doneEvent) · onError(message)
+ */
+export const useAssistantVoice = ({ sessionId, greeting, onTurn, onDelta, onDone, onError }) => {
   const [active, setActive] = useState(false);
   const [mode, setMode] = useState('idle');
   const run = useRef(null), stream = useRef(null), context = useRef(null), audio = useRef(null);
-  const playbackEnd = useRef(null), callbacks = useRef({ onReply, onError });
-  callbacks.current = { onReply, onError };
+  const playbackEnd = useRef(null), fillers = useRef([]), fillerTurn = useRef(0);
+  const callbacks = useRef({ onTurn, onDelta, onDone, onError });
+  callbacks.current = { onTurn, onDelta, onDone, onError };
+  const session = useRef(sessionId);
+  session.current = sessionId;
+  const player = useRef(null);
+  // One audio element for the whole conversation, unlocked in the tap that starts voice (iOS Safari
+  // and the iPhone app only let an element play sound after a tap has played it once).
+  const element = () => { if (!player.current) player.current = new Audio(); return player.current; };
+  const unlock = () => {
+    const el = element();
+    try { el.src = SILENCE; const p = el.play(); if (p && p.catch) p.catch(() => {}); } catch { /* not supported */ }
+  };
 
   const stop = useCallback(() => {
     run.current?.abort(); run.current = null;
@@ -29,10 +49,11 @@ export const useAssistantVoice = ({ sessionId, greeting, onReply, onError }) => 
   }, [stop]);
 
   const play = useCallback(async (path, signal) => {
-    if (signal?.aborted) return false;
+    if (signal?.aborted || !path) return false;
     audio.current?.pause();
     playbackEnd.current?.(false);
-    const player = new Audio(audioUrl(path));
+    const player = element();
+    player.src = audioUrl(path);
     audio.current = player;
     return new Promise(resolve => {
       let timer;
@@ -63,6 +84,7 @@ export const useAssistantVoice = ({ sessionId, greeting, onReply, onError }) => 
 
   const replay = async (message) => {
     stop();
+    unlock();
     const controller = new AbortController(); run.current = controller;
     setMode('thinking');
     try {
@@ -73,11 +95,32 @@ export const useAssistantVoice = ({ sessionId, greeting, onReply, onError }) => 
     finally { if (!controller.signal.aborted) { setMode('idle'); run.current = null; } }
   };
 
+  // One spoken turn. Resolves {ended, audioOk}.
+  const speakTurn = async (blob, signal) => {
+    const pick = fillers.current.length ? fillers.current[fillerTurn.current++ % fillers.current.length] : null;
+    // The filler starts at once; answer audio waits for it, then plays piece by piece.
+    let queue = pick ? play(pick.audio_url, signal) : Promise.resolve(true);
+    let pieces = 0, played = 0, audioFailed = false, ended = false;
+    await voiceStream(blob, session.current, signal, event => {
+      if (event.type === 'transcript') callbacks.current.onTurn(event.text);
+      else if (event.type === 'delta') callbacks.current.onDelta(event.text);
+      else if (event.type === 'done') { ended = !!event.end_conversation; callbacks.current.onDone(event); }
+      else if (event.type === 'audio') {
+        pieces += 1;
+        queue = queue.then(() => signal.aborted ? false : play(event.url, signal)).then(ok => { if (ok) played += 1; return ok; });
+      } else if (event.type === 'audio_error') audioFailed = true;
+    });
+    if (!signal.aborted) setMode(m => (m === 'speaking' ? m : 'thinking'));
+    await queue;
+    return { ended, audioOk: !audioFailed && (pieces === 0 || played > 0) };
+  };
+
   const start = async () => {
     stop();
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
       callbacks.current.onError('This browser does not support microphone recording. Please type your question.'); return;
     }
+    unlock();
     const controller = new AbortController(); run.current = controller;
     const { signal } = controller;
     setActive(true); setMode('permission');
@@ -90,6 +133,8 @@ export const useAssistantVoice = ({ sessionId, greeting, onReply, onError }) => 
       stream.current = mic;
       mic.getAudioTracks().forEach(track => { track.enabled = false; });
       setMode('thinking');
+      // Greeting and the short "one moment" phrases load together.
+      getFillers(signal).then(list => { fillers.current = list; }).catch(() => {});
       const hello = await getSpeech(greeting, signal);
       if (!await play(hello, signal)) {
         if (!signal.aborted) callbacks.current.onError('Audio is blocked. You can type below or try the voice button again.');
@@ -101,15 +146,10 @@ export const useAssistantVoice = ({ sessionId, greeting, onReply, onError }) => 
         if (signal.aborted) break;
         if (!blob) { callbacks.current.onError('No speech heard. Voice is paused; tap the microphone when you’re ready.'); break; }
         setMode('thinking');
-        const data = await voiceAnswer(blob, sessionId, signal);
+        const { ended, audioOk } = await speakTurn(blob, signal);
         if (signal.aborted) break;
-        callbacks.current.onReply(data);
-        if (data.audio_error) { callbacks.current.onError(data.audio_error); break; }
-        if (!data.audio_url || !await play(data.audio_url, signal)) {
-          if (!signal.aborted) callbacks.current.onError('Audio could not play. Your answer is available in the conversation.');
-          break;
-        }
-        if (data.end_conversation) break;
+        if (!audioOk) { callbacks.current.onError('Audio could not play. Your answer is available in the conversation.'); break; }
+        if (ended) break;
       }
     } catch (error) {
       if (!signal.aborted) callbacks.current.onError(

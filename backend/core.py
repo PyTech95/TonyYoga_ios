@@ -162,6 +162,47 @@ async def get_optional_user(request: Request) -> Optional[dict]:
 
 
 
+def _public_ip(value: str) -> str:
+    import ipaddress
+    try:
+        ip = ipaddress.ip_address((value or "").strip())
+    except ValueError:
+        return ""
+    return "" if (ip.is_private or ip.is_loopback or ip.is_unspecified or ip.is_reserved or ip.is_multicast) else str(ip)
+
+
+def client_ip(request: Request) -> str:
+    """The visitor's IP. Behind nginx every request comes from 127.0.0.1, so the proxy's headers are
+    used when the direct peer is local: the last X-Forwarded-For hop (the one nginx appends), then
+    X-Real-IP. A header value must be a public IP address; anything else (a made-up value, a
+    loopback/private address) is ignored. With no usable header the peer address is returned —
+    "unknown visitor" for the per-visitor limits (see is_local_ip)."""
+    import ipaddress
+    peer = request.client.host if request.client else ""
+    try:
+        local = not peer or ipaddress.ip_address(peer).is_private or ipaddress.ip_address(peer).is_loopback
+    except ValueError:
+        local = True
+    if local:
+        hops = [h.strip() for h in (request.headers.get("x-forwarded-for") or "").split(",") if h.strip()]
+        for candidate in ([hops[-1]] if hops else []) + [request.headers.get("x-real-ip") or ""]:
+            ip = _public_ip(candidate)
+            if ip:
+                return ip
+    return peer or "unknown"
+
+
+def is_local_ip(ip: str) -> bool:
+    """True when the visitor's own address is unknown (no usable proxy header): limits that
+    count per visitor then apply site-wide instead."""
+    import ipaddress
+    try:
+        a = ipaddress.ip_address(ip)
+        return a.is_loopback or a.is_private
+    except ValueError:
+        return True
+
+
 async def require_role(request: Request, roles: List[str]) -> dict:
     user = await get_current_user(request)
     if user.get("role") not in roles:

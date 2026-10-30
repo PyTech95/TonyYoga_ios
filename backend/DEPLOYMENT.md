@@ -163,3 +163,54 @@ Stripe (only if card payments are used):
 Security notes: a password change (by the member or the admin) signs out that account's other
 sessions; refunds are processed once even on double clicks; refunded payments are never
 delivered again by the automatic payment re-check.
+
+## Assistant 2.0 (30 Oct 2026): faster, knows the student, writes to the team
+
+**Faster.** Every chat answer starts with an instant `start` event (the chat shows "One moment,
+let me check…" at once) and then streams. Voice turns use `POST /api/assistant/voice/stream`
+(SSE: `start` → `transcript` → `delta`… → `audio` pieces → `done` → `end`): the first sentence is
+spoken as soon as it is written, and a short cached phrase ("Okay, one moment.") from
+`GET /api/assistant/fillers?lang=` plays the moment the visitor stops talking. Gemini Flash /
+Flash-Lite are asked for the shortest thinking level (`minimal`, then `low`, then none if a model
+refuses); OpenAI reasoning models get `reasoning_effort` `none` → `minimal` → `low`. One HTTPS
+connection to the provider is kept open between answers. The catalogue is cached for 60 s.
+The old `/api/assistant/chat`, `/chat/stream` and `/voice` keep working for app builds already
+in the stores.
+
+**Knows more.** The prompt now holds the catalogue (courses, memberships with what they include,
+class passes, live classes for the next 14 days, retreats, shop, meditations), a site guide (how
+My Yoga, course choice, bookings, pause/cancel, receipts, withdrawal… work), Admin → Settings →
+**What the assistant should also know** (`assistant_knowledge`, up to 6,000 characters), and — for
+a signed-in student — their own account: memberships and what they include, the course still to
+choose, courses and progress, class credits, booked classes, orders, last payments, open help
+requests. Text answers can be up to 5 short sentences or a short list; spoken answers 1–3 sentences.
+
+**Writes to the team.** When a student has a problem it can't solve, the assistant says it is
+writing to Tony's team and creates a **help request** (`help_requests` collection; reference
+`H-XXXXX`): admins get a bell notification + email, the WhatsApp number in
+`help_alert_whatsapp` (falls back to the lead alert number) gets a message when WhatsApp is set up,
+and `help_alert_emails` get a copy. Admin → **Help requests** shows the conversation, a link to the
+student, private notes, status, and a reply box (email + app notification; shown in My Yoga →
+"Messages with Tony's team"). Guests must give an email first. Limits: one open request per
+conversation (later messages are added to it), 5 per student/email per day, 10 per IP per day.
+Settings: `help_requests_enabled`, `help_alerts_enabled`.
+
+**WhatsApp (Meta Cloud API).** Admin → Settings → WhatsApp → service **Meta — WhatsApp Cloud
+API**: access token (secret; `META_WHATSAPP_TOKEN` also works), phone number ID, API version
+(default `v23.0`). WhatsApp only delivers free text to people who wrote to the business number in
+the last 24 hours, so for alerts to Tony's phone create a message template in WhatsApp Manager
+(category Utility, body e.g. `{{1}}`) and enter its name and language; the alert text fills `{{1}}`.
+Twilio stays available.
+
+**nginx — please check.** The rate limits now use the visitor's IP from `X-Real-IP` /
+`X-Forwarded-For` when the request comes from the local proxy. Make sure the `/api` location has:
+
+```
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+proxy_read_timeout 120s;
+```
+
+Without these headers every visitor looks like 127.0.0.1; the assistant then falls back to a
+site-wide limit (400 requests/minute) instead of 40 per visitor, and the per-IP help-request
+limit is skipped. Streaming answers send `X-Accel-Buffering: no`, so no extra buffering setting is needed.
