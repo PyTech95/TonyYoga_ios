@@ -1,12 +1,12 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Calendar, GraduationCap, Sparkles, Play, Award } from "lucide-react";
+import { ArrowRight, Calendar, GraduationCap, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { useTranslation } from "react-i18next";
 import Spinner from "@/components/Spinner";
 import StreakCard from "@/components/StreakCard";
-import MyYogaCard from "@/components/MyYogaCard";
+import MyPracticePanel from "@/components/MyPracticePanel";
 import TodayCard from "@/components/TodayCard";
 import Logo from "@/components/Logo";
 import FadeImg from "@/components/FadeImg";
@@ -28,7 +28,6 @@ export default function HomePage() {
   const [classes, setClasses] = useState(null);
   const [programs, setPrograms] = useState(null);
   const [news, setNews] = useState([]);
-  const [continueRows, setContinueRows] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -47,10 +46,6 @@ export default function HomePage() {
     })();
   }, []);
 
-  useEffect(() => {
-    if (!user) { setContinueRows([]); return; }
-    api.get("/me/continue").then(({ data }) => setContinueRows(data || [])).catch(() => setContinueRows([]));
-  }, [user]);
 
   const greeting = (() => {
     const h = new Date().getHours();
@@ -84,61 +79,16 @@ export default function HomePage() {
       </div>
 
       <div className="mx-auto max-w-2xl px-5 mt-10 space-y-10">
+        {/* What the student has + their next step (start/continue a course, choose the included one) */}
+        {user && user.role !== "admin" && <MyPracticePanel />}
+
         {/* Today: monthly theme, today's plan step, next live class (signed-in only) */}
         {user && <TodayCard />}
-
-        {/* What the member has (signed-in only) */}
-        {user && user.role !== "admin" && <MyYogaCard compact />}
 
         {/* Streak (signed-in only) */}
         <StreakCard />
 
-        {/* Continue learning (signed-in, enrolled) */}
-        {user && continueRows.length > 0 && (
-          <section data-testid="continue-learning">
-            <div className="flex items-baseline justify-between mb-4">
-              <div>
-                <div className="eyebrow mb-1">{t("home.keep_going")}</div>
-                <h2 className="serif text-2xl">{t("home.continue_learning")}</h2>
-              </div>
-            </div>
-            <div className="flex gap-4 overflow-x-auto no-scrollbar -mx-5 px-5 pb-2">
-              {continueRows.map((r) => {
-                const nl = r.next_lesson;
-                const target = nl ? `/library/${nl.video_id}` : `/programs/${r.program_id}`;
-                return (
-                  <Link
-                    key={r.program_id}
-                    to={target}
-                    data-testid={`continue-${r.program_id}`}
-                    className="shrink-0 w-72 rounded-2xl overflow-hidden bg-white border border-[#E5E6DF] hover:border-[#B25A45] transition"
-                  >
-                    <div className="relative aspect-[16/9] overflow-hidden bg-[#F2F2EC]">
-                      {(nl?.cover_image || r.cover_image) && <img src={nl?.cover_image || r.cover_image} alt="" className="h-full w-full object-cover" />}
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/55 to-transparent" />
-                      <div className="absolute left-3 right-3 bottom-2 text-[#FAFAF7]">
-                        <div className="text-[11px] uppercase tracking-widest opacity-90">{r.program_title}</div>
-                        <div className="text-sm font-semibold leading-tight truncate">{nl ? nl.title : t("home.course_complete")}</div>
-                      </div>
-                      <div className="absolute top-2 right-2 h-10 w-10 rounded-full bg-[#B25A45] text-white flex items-center justify-center">
-                        {nl ? <Play className="h-4 w-4" /> : <Award className="h-4 w-4" />}
-                      </div>
-                    </div>
-                    <div className="p-4">
-                      <div className="flex items-center justify-between text-xs text-[#6B7269] mb-1.5">
-                        <span>{r.completed}/{r.total} {t("home.lessons")}</span>
-                        <span className="font-semibold text-[#545E56]">{r.percent}%</span>
-                      </div>
-                      <div className="h-1.5 rounded-full bg-[#F2F2EC] overflow-hidden">
-                        <div className="h-full bg-[#839682] rounded-full transition-all" style={{ width: `${r.percent}%` }} />
-                      </div>
-                    </div>
-                  </Link>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        {/* Continue learning now lives in the Your practice panel above. */}
 
         {/* Upcoming */}
         <section>

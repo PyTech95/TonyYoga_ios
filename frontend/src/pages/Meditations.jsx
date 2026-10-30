@@ -4,6 +4,7 @@ import { Search, X, Clock, Play, Pause, Sparkles, Wind, Moon } from "lucide-reac
 import { api } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
+import SafeYouTube from "@/components/SafeYouTube";
 
 export default function Meditations() {
   const { t } = useTranslation();
@@ -136,15 +137,12 @@ export default function Meditations() {
 function MeditationPlayer({ m, onClose }) {
   const { t } = useTranslation();
   const yid = m.youtube_id;
-  const embed = yid ? `https://www.youtube.com/embed/${yid}?rel=0&modestbranding=1&autoplay=1` : null;
   return (
     <div data-testid="meditation-player" className="fixed inset-0 z-[80] bg-[#1C221F]/60 backdrop-blur-sm flex items-end sm:items-center justify-center p-0 sm:p-6" onClick={onClose}>
       <div className="bg-[#FAFAF7] w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl max-h-[92vh] overflow-y-auto overscroll-contain" onClick={(e) => e.stopPropagation()}>
         <div className="relative">
-          {embed ? (
-            <div className="aspect-video bg-black sm:rounded-t-3xl overflow-hidden">
-              <iframe title={m.title} src={embed} className="h-full w-full" allow="accelerometer; autoplay; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-            </div>
+          {yid ? (
+            <SafeYouTube videoId={yid} title={m.title} rounded="rounded-none sm:rounded-t-3xl" autoStart testId="meditation-video" />
           ) : m.cover_image ? (
             <div className="aspect-video bg-[#F2F2EC] sm:rounded-t-3xl overflow-hidden">
               <img src={m.cover_image} alt={m.title} className="h-full w-full object-cover" />

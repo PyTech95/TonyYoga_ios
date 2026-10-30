@@ -3,7 +3,8 @@ import { Link, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { PlayCircle, ExternalLink, Lock } from "lucide-react";
 import { api } from "@/lib/api";
-import { youTubeEmbed } from "@/lib/youtube";
+import { isYouTube, youTubeEmbed } from "@/lib/youtube";
+import SafeYouTube from "@/components/SafeYouTube";
 import PageHeader from "@/components/PageHeader";
 import { errText, fmtDate } from "./teacherShared";
 
@@ -53,7 +54,9 @@ export default function TeacherCourse() {
         {c.ends_at && <p className="text-[12px] text-[#6B7269] -mt-2">{t("teachers.access_until", "Your access lasts until {{date}}.", { date: fmtDate(c.ends_at) })}</p>}
         {lesson ? (
           <div className="space-y-3">
-            {src ? (
+            {isYouTube(lesson.video_url) ? (
+              <SafeYouTube key={lesson.id} url={lesson.video_url} title={lesson.title} testId="teacher-course-player" />
+            ) : src ? (
               <div className="aspect-video rounded-3xl overflow-hidden bg-black">
                 <iframe key={lesson.id} src={src} title={lesson.title} className="h-full w-full" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowFullScreen data-testid="teacher-course-player" />
               </div>

@@ -108,6 +108,8 @@ export default function MyYoga() {
 
   useEffect(() => {
     if (data && params.get("tab") === "orders") ordersRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    // Links like /my-yoga#choose (from Home) land on that section once it has loaded.
+    if (data && window.location.hash === "#choose") document.getElementById("choose")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }, [data, params]);
 
   const choose = async (planId, programId) => {
@@ -191,7 +193,7 @@ export default function MyYoga() {
 
         {/* Course of your choice included in a membership */}
         {data?.choose_courses?.map((c) => (
-          <section key={c.plan_id} data-testid="my-yoga-choose" className="rounded-3xl bg-[#1C221F] text-[#FAFAF7] p-5 sm:p-6">
+          <section key={c.plan_id} id="choose" data-testid="my-yoga-choose" className="scroll-mt-24 rounded-3xl bg-[#1C221F] text-[#FAFAF7] p-5 sm:p-6">
             <div className="flex items-center gap-2 text-[#E8B8A8]"><Sparkles className="h-4 w-4" /><span className="text-[11px] uppercase tracking-[0.2em] font-semibold">{c.plan_name}</span></div>
             <h2 className="serif text-2xl mt-2 leading-tight">
               {c.remaining === 1 ? t("myyoga.choose_one", "Choose the course included in your membership") : t("myyoga.choose_n", "Choose {{n}} courses included in your membership", { n: c.remaining })}

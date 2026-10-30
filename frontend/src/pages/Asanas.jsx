@@ -3,6 +3,7 @@ import { Search, X, Flower2, ChevronRight, Play } from "lucide-react";
 import { api } from "@/lib/api";
 import PageHeader from "@/components/PageHeader";
 import Spinner from "@/components/Spinner";
+import SafeYouTube from "@/components/SafeYouTube";
 
 export default function Asanas() {
   const [asanas, setAsanas] = useState(null);
@@ -116,9 +117,6 @@ export default function Asanas() {
 function AsanaDetail({ asana, onClose }) {
   const yid = asana.youtube_id;
   const start = asana.start_seconds || 0;
-  const embed = yid
-    ? `https://www.youtube.com/embed/${yid}?start=${start}${asana.end_seconds ? `&end=${asana.end_seconds}` : ""}&rel=0&modestbranding=1`
-    : null;
 
   return (
     <div
@@ -131,10 +129,8 @@ function AsanaDetail({ asana, onClose }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="relative">
-          {embed ? (
-            <div className="aspect-video bg-black sm:rounded-t-3xl overflow-hidden">
-              <iframe title={asana.name} src={embed} className="h-full w-full" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowFullScreen />
-            </div>
+          {yid ? (
+            <SafeYouTube videoId={yid} start={start} end={asana.end_seconds || undefined} title={asana.name} rounded="rounded-none sm:rounded-t-3xl" testId="asana-video" />
           ) : asana.cover_image ? (
             <div className="aspect-video bg-[#F2F2EC] sm:rounded-t-3xl overflow-hidden">
               <img src={asana.cover_image} alt={asana.name} className="h-full w-full object-cover" />
