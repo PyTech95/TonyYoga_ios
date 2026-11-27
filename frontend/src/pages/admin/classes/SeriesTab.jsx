@@ -41,7 +41,7 @@ function SeriesForm({ initial, onClose, onSaved }) {
     level: initial?.level || "all", duration_minutes: initial?.duration_minutes || 60, capacity: initial?.capacity || 20,
     weekdays: initial?.schedule?.weekdays || [0, 2, 4], time: initial?.schedule?.time || "08:00",
     timezone: initial?.schedule?.timezone || "Europe/Madrid", start_date: localDate(tomorrow), weeks: 8, is_recorded: false,
-    create_meetings: true, apply_to_future: true, notify: true,
+    create_meetings: true, apply_to_future: true, notify: true, meeting_url: initial?.meeting_url || "",
   }));
   const [busy, setBusy] = useState(false);
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e?.target ? (e.target.type === "number" ? Number(e.target.value) : e.target.value) : e }));
@@ -51,6 +51,8 @@ function SeriesForm({ initial, onClose, onSaved }) {
     if (f.title.trim().length < 2) { toast.error(t("classes.need_title", "Give the class a name.")); return; }
     if (!teacher) { toast.error(t("classes.need_teacher", "Choose a teacher.")); return; }
     if (!editing && !f.weekdays.length) { toast.error(t("classes.need_days", "Pick at least one day.")); return; }
+    const link = (f.meeting_url || "").trim();
+    if (link && !/^https:\/\//.test(link)) { toast.error(t("classes.link_https", "The meeting link must start with https://")); return; }
     setBusy(true);
     try {
       if (editing) {
@@ -61,6 +63,7 @@ function SeriesForm({ initial, onClose, onSaved }) {
         if (Number(f.capacity) !== Number(initial.capacity)) payload.capacity = Number(f.capacity);
         if (f.time !== (initial.schedule?.time || "")) payload.time = f.time;
         if (f.timezone !== (initial.schedule?.timezone || "")) payload.timezone = f.timezone;
+        if (link !== (initial.meeting_url || "")) payload.meeting_url = link;
         const { data } = await api.patch(`/admin/classes/series/${initial.id}`, payload);
         toast.success(t("classes.series_saved", "Series saved. {{n}} future class(es) updated, {{m}} student(s) told.", { n: data?.classes_changed || 0, m: data?.students_told || 0 }));
       } else {
@@ -68,7 +71,7 @@ function SeriesForm({ initial, onClose, onSaved }) {
           title: f.title.trim(), description: f.description, instructor_id: teacher, location_type: f.location_type,
           location_detail: f.location_detail || null, style: f.style || "hot", level: f.level || "all", duration_minutes: Number(f.duration_minutes),
           capacity: Number(f.capacity), weekdays: f.weekdays, time: f.time, timezone: f.timezone, start_date: f.start_date, weeks: Number(f.weeks),
-          is_recorded: f.is_recorded, create_meetings: f.create_meetings,
+          is_recorded: f.is_recorded, create_meetings: link ? false : f.create_meetings, meeting_url: link || null,
         });
         toast.success(t("classes.series_created", "Series created with {{n}} classes.", { n: data?.created || 0 }));
       }
@@ -95,6 +98,13 @@ function SeriesForm({ initial, onClose, onSaved }) {
             </select>
           </Field>
         </div>
+        {f.location_type === "online" && (
+          <Field label={t("classes.series_link", "Zoom link for every class (optional)")}
+            hint={t("classes.series_link_hint", "Use your own recurring Zoom meeting. Only students who booked see it. Leave empty to create a meeting per class.")}>
+            <input value={f.meeting_url} onChange={set("meeting_url")} maxLength={500} className={inputCls} inputMode="url"
+              placeholder="https://us06web.zoom.us/j/…" data-testid="series-meeting-url" />
+          </Field>
+        )}
         {f.location_type === "in_person" && <Field label={t("classes.place", "Place / room")}><input value={f.location_detail} onChange={set("location_detail")} className={inputCls} placeholder="Studio Málaga" data-testid="series-place" /></Field>}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <Field label={t("classes.style", "Style")}><input value={f.style} onChange={set("style")} className={inputCls} data-testid="series-style" /></Field>
@@ -127,7 +137,7 @@ function SeriesForm({ initial, onClose, onSaved }) {
               <span className="text-[13px]">{t("classes.recorded", "Recorded for replay")}</span>
               <Toggle checked={f.is_recorded} onChange={(v) => setF((p) => ({ ...p, is_recorded: v }))} tid="series-recorded" />
             </div>
-            {f.location_type === "online" && (
+            {f.location_type === "online" && !(f.meeting_url || "").trim() && (
               <div className="flex items-center justify-between rounded-2xl bg-[#F7F6F1] px-4 py-3">
                 <span className="text-[13px]">{t("classes.make_zoom", "Create Zoom meetings automatically")}</span>
                 <Toggle checked={f.create_meetings} onChange={(v) => setF((p) => ({ ...p, create_meetings: v }))} tid="series-zoom" />

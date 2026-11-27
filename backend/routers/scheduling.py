@@ -369,7 +369,8 @@ async def get_instance(instance_id: str, user: Optional[dict] = Depends(get_opti
     passes = await db.class_passes.find_one({"user_id": user["id"], "active": True, "remaining": {"$gt": 0}}, {"_id": 0, "remaining": 1}) if user else None
     inst["viewer"] = {"access": access, "can_book": bool(access or passes or pricing["mode"] == "free")}
     join_access = await class_access(user["id"], inst, for_join=True) if user else None
-    legacy_or_pass = booking and booking.get("access_source") in (None, "pass", "free")
+    # "admin": Tony put the student in the class himself (Class manager → Add), so they may join.
+    legacy_or_pass = booking and booking.get("access_source") in (None, "pass", "free", "admin")
     if not staff and not (booking and (join_access or legacy_or_pass) and inst.get("status") != "cancelled"):
         inst.pop("zoom_join_url", None)
         inst.pop("zoom_meeting_id", None)
