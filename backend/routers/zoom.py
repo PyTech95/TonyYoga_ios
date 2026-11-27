@@ -246,7 +246,7 @@ async def get_recording(instance_id: str, user: dict = Depends(get_current_user)
         from access_terms import class_access, active_membership
         member = await active_membership(user["id"])
         access = await class_access(user["id"], inst, for_join=True)
-        booked_ok = booked and (booked.get("access_source") in (None, "pass", "free") or access)
+        booked_ok = booked and (booked.get("access_source") in (None, "pass", "free", "admin") or access)
         if not (booked_ok or member):
             raise HTTPException(403, "Recordings are available to students who booked this class.")
     url = inst.get("recording_url")

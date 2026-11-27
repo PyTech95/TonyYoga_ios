@@ -13,7 +13,8 @@ import { useAuth } from '@/lib/auth';
 
 // Public pages plus the student's own pages (My Yoga, classes, learning, payments) and Support,
 // so a student with an access or payment problem can ask right where they notice it.
-const publicRoute = path => /^\/(?:$|home$|programs(?:\/|$)|shop(?:\/|$)|schedule(?:\/|$)|memberships$|workshops(?:\/|$)|find-your-path$|meditations$|asanas$|news$|teacher-training$|discover$|passes$|support$|my-yoga$|my-classes$|my-learning$|my-payments$|my-plan$|private-sessions$|gift$|redeem$)/.test(path);
+// Pre-rendered pages load as "/support/" (trailing slash) on the live server: ignore it.
+const publicRoute = rawPath => { const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath; return /^\/(?:$|home$|programs(?:\/|$)|shop(?:\/|$)|schedule(?:\/|$)|memberships$|workshops(?:\/|$)|find-your-path$|meditations$|asanas$|news$|teacher-training$|discover$|passes$|support$|my-yoga$|my-classes$|my-learning$|my-payments$|my-plan$|private-sessions$|gift$|redeem$)/.test(path); };
 const newId = () => uuid();
 const WAIT_LINES = ['One moment, let me check…', 'Okay, looking into it…', 'Sure, just a second…'];
 const updateLast = (list, change) => {

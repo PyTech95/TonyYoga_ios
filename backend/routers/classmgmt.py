@@ -14,6 +14,7 @@ Instructors (role "instructor") can open the roster and take attendance for thei
 """
 import asyncio
 import csv
+import hashlib
 import io
 from datetime import date, datetime, time, timedelta, timezone
 from typing import List, Optional
@@ -154,6 +155,7 @@ async def class_series(request: Request):
         instructor = await db.users.find_one({"id": t.get("instructor_id")}, {"_id": 0, "name": 1}) or {}
         out.append({**{k: t.get(k) for k in ("id", "title", "description", "instructor_id", "location_type", "location_detail", "style", "level",
                                               "duration_minutes", "capacity", "schedule", "active")},
+                    "meeting_url": t.get("zoom_join_url") or "",
                     "instructor_name": instructor.get("name"), "upcoming": len(upcoming), "next_start": upcoming[0]["start_time"] if upcoming else None,
                     "last_start": upcoming[-1]["start_time"] if upcoming else None, "fill_30d": round(sum(fills) * 100 / len(fills)) if fills else None,
                     "attendance_30d": round(attended * 100 / booked) if booked else None, "subscribers": subscribers})
@@ -178,6 +180,16 @@ class SeriesIn(BaseModel):
     weeks: int = Field(default=8, ge=1, le=52)
     is_recorded: bool = False
     create_meetings: bool = True
+    # One Zoom link for every class of the series (e.g. Tony's own recurring meeting). When set,
+    # no meetings are created through the Zoom API and new weeks get the same link.
+    meeting_url: Optional[str] = Field(default=None, max_length=500)
+
+
+def _meeting_url(value: Optional[str]) -> str:
+    v = (value or "").strip()
+    if v and not v.startswith("https://"):
+        raise HTTPException(422, "The meeting link must start with https://")
+    return v
 
 
 def _dates(weekdays: List[int], hhmm: str, tzname: str, start: date, weeks: int, after: Optional[datetime] = None) -> List[datetime]:
@@ -203,10 +215,11 @@ async def _make_instances(t: dict, starts: List[datetime], is_recorded: bool, cr
         rows.append({"id": gen_id(), "template_id": t["id"], "title": t["title"], "instructor_id": t["instructor_id"],
                      "location_type": t["location_type"], "location_detail": t.get("location_detail"), "style": t.get("style"), "level": t.get("level"),
                      "duration_minutes": t["duration_minutes"], "start_time": s.isoformat(), "end_time": (s + timedelta(minutes=t["duration_minutes"])).isoformat(),
-                     "capacity": t["capacity"], "is_recorded": is_recorded, "status": "scheduled", "bookings_count": 0, "created_at": now_utc().isoformat()})
+                     "capacity": t["capacity"], "is_recorded": is_recorded, "status": "scheduled", "bookings_count": 0, "created_at": now_utc().isoformat(),
+                     **({"zoom_join_url": t["zoom_join_url"]} if t.get("zoom_join_url") and t["location_type"] == "online" else {})})
     if rows:
         await db.class_instances.insert_many([{**r} for r in rows])
-    if create_meetings and t["location_type"] == "online":
+    if create_meetings and t["location_type"] == "online" and not t.get("zoom_join_url"):
         try:
             from routers.zoom import create_meeting_for_instance
             for r in rows[:60]:
@@ -229,6 +242,7 @@ async def create_series(payload: SeriesIn, request: Request):
     template = {"id": tid, "title": payload.title, "description": payload.description, "instructor_id": payload.instructor_id,
                 "location_type": payload.location_type, "location_detail": payload.location_detail, "style": payload.style, "level": payload.level,
                 "duration_minutes": payload.duration_minutes, "capacity": payload.capacity, "active": True,
+                "zoom_join_url": _meeting_url(payload.meeting_url) or None,
                 "schedule": {"weekdays": sorted(set(payload.weekdays)), "time": payload.time, "timezone": payload.timezone},
                 "created_by": admin["id"], "created_at": now_utc().isoformat()}
     await db.class_templates.insert_one({**template})
@@ -249,6 +263,7 @@ class SeriesPatch(BaseModel):
     capacity: Optional[int] = Field(default=None, ge=1, le=1000)
     time: Optional[str] = Field(default=None, pattern=r"^\d{2}:\d{2}$")
     timezone: Optional[str] = Field(default=None, max_length=60)
+    meeting_url: Optional[str] = Field(default=None, max_length=500)   # "" removes the series link
     apply_to_future: bool = True
     notify: bool = True
 
@@ -259,7 +274,11 @@ async def update_series(template_id: str, payload: SeriesPatch, request: Request
     t = await db.class_templates.find_one({"id": template_id}, {"_id": 0})
     if not t:
         raise HTTPException(404, "Class series not found")
-    data = payload.model_dump(exclude_none=True, exclude={"apply_to_future", "notify", "time", "timezone"})
+    data = payload.model_dump(exclude_none=True, exclude={"apply_to_future", "notify", "time", "timezone", "meeting_url"})
+    link = None if payload.meeting_url is None else _meeting_url(payload.meeting_url)
+    link_changed = link is not None and link != (t.get("zoom_join_url") or "")
+    if link is not None:
+        data["zoom_join_url"] = link or None
     if "instructor_id" in data and not await db.users.find_one({"id": data["instructor_id"], "role": {"$in": ["admin", "instructor"]}}):
         raise HTTPException(422, "Choose a teacher for the class.")
     sched = dict(t.get("schedule") or {})
@@ -274,6 +293,8 @@ async def update_series(template_id: str, payload: SeriesPatch, request: Request
                                                {"_id": 0}).to_list(1000)
         for inst in future:
             update = {k: v for k, v in data.items() if k in ("title", "instructor_id", "location_type", "location_detail", "style", "level", "capacity", "duration_minutes")}
+            if link_changed:
+                update["zoom_join_url"] = link or None
             start = parse_dt(inst["start_time"])
             new_start = start
             if payload.time:
@@ -288,7 +309,10 @@ async def update_series(template_id: str, payload: SeriesPatch, request: Request
             changed += 1
             if "capacity" in update:
                 await _fill_from_waitlist(inst["id"])
-            if payload.notify and (new_start != start or "instructor_id" in update or "location_detail" in update):
+            if payload.notify and link_changed and link and new_start == start and "instructor_id" not in update and "location_detail" not in update:
+                moved += await _tell_booked(inst["id"], "Class updated", f"{update.get('title', inst['title'])}: new meeting link (open the class page).",
+                                            key=f"series-link:{inst['id']}:{hashlib.sha256(link.encode()).hexdigest()[:12]}")
+            elif payload.notify and (new_start != start or "instructor_id" in update or "location_detail" in update):
                 moved += await _tell_booked(inst["id"], "Class updated",
                                             f"{update.get('title', inst['title'])} is now {_fmt(update.get('start_time', inst['start_time']), sched.get('timezone'))}"
                                             + (" with a different teacher." if "instructor_id" in update and update["instructor_id"] != inst.get("instructor_id") else "."),

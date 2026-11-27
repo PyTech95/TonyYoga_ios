@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, RotateCcw, AlertCircle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { parseYouTubeId, secToMMSS } from "@/lib/youtube";
-import { loadYT, LOCKED_PLAYER_VARS, ytErrorText } from "@/lib/ytApi";
+import { ytReady, makeYTPlayer, YT_STATE, LOCKED_PLAYER_VARS, ytErrorText } from "@/lib/ytApi";
 
 /**
  * A YouTube video that plays inside our page and never sends people to YouTube.
@@ -14,6 +14,9 @@ import { loadYT, LOCKED_PLAYER_VARS, ytErrorText } from "@/lib/ytApi";
  * iPhone Safari may refuse to start a YouTube video from our button (it wants a tap inside the
  * player). Then, and only until it plays, the middle of the video lets the tap through to
  * YouTube's own play button while the edges (title, logo, links) stay covered.
+ *
+ * In the mobile apps the video plays through https://tonyoga.com/yt-player.html (see ytApi.js):
+ * YouTube refuses embeds from the app's own capacitor:// page (error 153).
  */
 export default function SafeYouTube({
   url, videoId, start = 0, end, title = "Video", poster, badge, testId = "safe-youtube",
@@ -59,7 +62,7 @@ export default function SafeYouTube({
   }, [pseudoFs]);
 
   // Warm up the API so the first tap starts quickly.
-  useEffect(() => { if (id) loadYT().catch(() => {}); }, [id]);
+  useEffect(() => { if (id) ytReady().catch(() => {}); }, [id]);
 
   useEffect(() => () => {
     clearInterval(timer.current); clearTimeout(blockTimer.current); clearTimeout(hideTimer.current);
@@ -89,7 +92,7 @@ export default function SafeYouTube({
     blockTimer.current = setTimeout(() => {
       try {
         const s = player.current?.getPlayerState?.();
-        const P = window.YT?.PlayerState || {};
+        const P = YT_STATE;
         if (s !== P.PLAYING && s !== P.BUFFERING) setBlocked(true);
       } catch { /* noop */ }
     }, 1800);
@@ -98,24 +101,22 @@ export default function SafeYouTube({
   const create = useCallback(() => {
     if (!id || player.current) return;
     setStarted(true);
-    loadYT().then((YT) => {
+    ytReady().then(() => {
       if (!hostRef.current || player.current) return;
       // Fresh mount inside our own element: YouTube replaces it with the iframe.
       hostRef.current.replaceChildren();
       const mount = document.createElement("div");
       hostRef.current.appendChild(mount);
-      player.current = new YT.Player(mount, {
-        host: "https://www.youtube-nocookie.com",
+      player.current = makeYTPlayer(mount, {
         videoId: id,
-        playerVars: { ...LOCKED_PLAYER_VARS, autoplay: 1, start: segStart, ...(segEnd ? { end: segEnd } : {}),
-                      origin: window.location.origin },
+        playerVars: { ...LOCKED_PLAYER_VARS, autoplay: 1, start: segStart, ...(segEnd ? { end: segEnd } : {}) },
         events: {
           onReady: (e) => {
             try { setMuted(!!e.target.isMuted?.()); setDuration(e.target.getDuration?.() || 0); e.target.playVideo(); } catch { /* noop */ }
             watchForBlock();
           },
           onStateChange: (e) => {
-            const P = window.YT.PlayerState;
+            const P = YT_STATE;
             if (e.data === P.PLAYING) {
               setPlaying(true); setEnded(false); setBlocked(false); clearTimeout(blockTimer.current); poll();
               clearTimeout(hideTimer.current); hideTimer.current = setTimeout(() => setShowBar(false), 2500);

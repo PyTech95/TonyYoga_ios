@@ -1,4 +1,5 @@
 // YouTube helpers — parse ids, build timestamped embeds, mm:ss <-> seconds.
+import { ytViaWrapper, ytWrapperUrl } from "@/lib/ytApi";
 
 export function parseYouTubeId(url) {
   if (!url) return null;
@@ -7,6 +8,7 @@ export function parseYouTubeId(url) {
     /youtube\.com\/watch\?v=([\w-]{11})/,
     /youtu\.be\/([\w-]{11})/,
     /youtube\.com\/embed\/([\w-]{11})/,
+    /youtube-nocookie\.com\/embed\/([\w-]{11})/,
     /youtube\.com\/shorts\/([\w-]{11})/,
     /youtube\.com\/live\/([\w-]{11})/,
   ];
@@ -24,9 +26,12 @@ export function isYouTube(url) {
 
 // Build an embed URL that starts (and optionally ends) at the given seconds.
 // Uses the privacy-enhanced (no-cookie) domain — better for unlisted/paid content.
+// In the mobile apps YouTube refuses embeds from the app's own page (error 153), so the video is
+// embedded through https://tonyoga.com/yt-player.html instead (YouTube's normal controls).
 export function youTubeEmbed(url, start, end) {
   const id = parseYouTubeId(url);
   if (!id) return null;
+  if (ytViaWrapper()) return ytWrapperUrl(id, { start, end, plain: true });
   const params = new URLSearchParams({ rel: "0", modestbranding: "1", playsinline: "1" });
   if (start) params.set("start", Math.floor(start));
   if (end) params.set("end", Math.floor(end));
