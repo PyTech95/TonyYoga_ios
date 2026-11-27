@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="strict-origin-when-cross-origin">
+<meta name="robots" content="noindex, nofollow">
+<title>Video — Tony Yoga</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #player, iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; }
+</style>
+</head>
+<body>
+<div id="player"></div>
+<script>
+/*
+ * Tony Yoga in-app YouTube player.
+ *
+ * Inside the iPhone app the page runs at capacitor://localhost, and WKWebView sends YouTube no
+ * Referer from there, so YouTube refuses the embed ("Error 153 — video player configuration
+ * error"). The app loads this page from https://tonyoga.com in an iframe instead; YouTube is
+ * embedded from here, so it sees tonyoga.com as the embedding site.
+ *
+ * The app drives the player with postMessage ({target: "ty-yt", cmd: "play" | "pause" | "seek" |
+ * "mute" | "unmute"}) and gets back {source: "ty-yt", type: "ready" | "state" | "time" | "error"}.
+ * ?plain=1 shows YouTube's normal player instead (for videos the app shows with YouTube controls).
+ *
+ * Only the Tony Yoga app (and this site) may use the page.
+ */
+(function () {
+  "use strict";
+  var ALLOWED = /^(capacitor:\/\/localhost|ionic:\/\/localhost|https?:\/\/localhost(:\d+)?|http:\/\/127\.0\.0\.1(:\d+)?|https:\/\/(www\.)?tonyoga\.com)$/;
+  var q = new URLSearchParams(location.search);
+  var id = (q.get("v") || "").replace(/[^A-Za-z0-9_-]/g, "").slice(0, 11);
+  var num = function (k) { var n = parseInt(q.get(k) || "", 10); return isFinite(n) && n > 0 ? n : 0; };
+  var start = num("start"), end = num("end");
+
+  // Who embeds us: the browser's own record when it has one, otherwise what the app says.
+  var parentOrigin = "";
+  try { if (location.ancestorOrigins && location.ancestorOrigins.length) parentOrigin = location.ancestorOrigins[0]; } catch (e) { /* noop */ }
+  if (!parentOrigin) parentOrigin = q.get("o") || "";
+  if (window.parent === window || !ALLOWED.test(parentOrigin) || id.length !== 11) {
+    document.body.innerHTML = "";
+    return;
+  }
+
+  if (q.get("plain") === "1") {
+    var p = new URLSearchParams({ rel: "0", modestbranding: "1", playsinline: "1" });
+    if (start) p.set("start", String(start));
+    if (end > start) p.set("end", String(end));
+    var f = document.createElement("iframe");
+    f.src = "https://www.youtube-nocookie.com/embed/" + id + "?" + p.toString();
+    f.title = document.title;
+    f.allow = "autoplay; encrypted-media; picture-in-picture; fullscreen";
+    f.setAttribute("allowfullscreen", "");
+    f.referrerPolicy = "strict-origin-when-cross-origin";
+    document.getElementById("player").replaceWith(f);
+    return;
+  }
+
+  var player = null, timer = null;
+  function send(msg) {
+    msg.source = "ty-yt";
+    try { window.parent.postMessage(msg, parentOrigin); } catch (e) { /* noop */ }
+  }
+  function val(fn, dflt) { try { var v = fn(); return v == null ? dflt : v; } catch (e) { return dflt; } }
+  function snapshot(type, extra) {
+    var m = {
+      type: type,
+      state: val(function () { return player.getPlayerState(); }, -1),
+      time: val(function () { return player.getCurrentTime(); }, 0),
+      duration: val(function () { return player.getDuration(); }, 0),
+      muted: !!val(function () { return player.isMuted(); }, false)
+    };
+    if (extra) for (var k in extra) m[k] = extra[k];
+    return m;
+  }
+
+  window.onYouTubeIframeAPIReady = function () {
+    var vars = {
+      controls: 0, disablekb: 1, fs: 0, rel: 0, modestbranding: 1, playsinline: 1, iv_load_policy: 3,
+      autoplay: q.get("autoplay") === "1" ? 1 : 0, start: start, origin: location.origin
+    };
+    if (end > start) vars.end = end;
+    if (q.get("cc_load_policy") === "1") vars.cc_load_policy = 1;
+    player = new YT.Player("player", {
+      host: "https://www.youtube-nocookie.com",
+      videoId: id,
+      playerVars: vars,
+      events: {
+        onReady: function () {
+          send(snapshot("ready"));
+          clearInterval(timer);
+          timer = setInterval(function () { send(snapshot("time")); }, 250);
+        },
+        onStateChange: function (e) { send(snapshot("state", { state: e.data })); },
+        onError: function (e) { send({ type: "error", code: e && e.data != null ? e.data : -1 }); }
+      }
+    });
+  };
+
+  window.addEventListener("message", function (ev) {
+    if (ev.source !== window.parent || ev.origin !== parentOrigin) return;
+    var m = ev.data;
+    if (!m || m.target !== "ty-yt" || !player) return;
+    try {
+      if (m.cmd === "play") player.playVideo();
+      else if (m.cmd === "pause") player.pauseVideo();
+      else if (m.cmd === "seek") player.seekTo(Math.max(0, Number(m.t) || 0), true);
+      else if (m.cmd === "mute") player.mute();
+      else if (m.cmd === "unmute") player.unMute();
+    } catch (e) { /* noop */ }
+    send(snapshot("time"));
+  });
+
+  var s = document.createElement("script");
+  s.src = "https://www.youtube.com/iframe_api";
+  s.async = true;
+  s.onerror = function () { send({ type: "error", code: -1 }); };
+  document.head.appendChild(s);
+})();
+</script>
+</body>
+</html>

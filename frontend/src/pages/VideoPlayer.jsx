@@ -8,7 +8,7 @@ import Spinner from "@/components/Spinner";
 import RelatedProducts from "@/components/RelatedProducts";
 import LessonExtras from "@/components/LessonExtras";
 import { isYouTube, parseYouTubeId, secToMMSS } from "@/lib/youtube";
-import { loadYT, LOCKED_PLAYER_VARS, ytErrorText } from "@/lib/ytApi";
+import { ytReady, makeYTPlayer, YT_STATE, LOCKED_PLAYER_VARS, ytErrorText } from "@/lib/ytApi";
 
 export default function VideoPlayer() {
   const { id } = useParams();
@@ -120,7 +120,7 @@ export default function VideoPlayer() {
     const end = v.end_seconds || undefined;
     const beginAt = (resume && resume > start + 2 && (!end || resume < end - 2)) ? Math.floor(resume) : start;
 
-    loadYT().then((YT) => {
+    ytReady().then(() => {
       if (cancelled || !ytHostRef.current) return;
       // A fresh mount every time: YouTube replaces the element it is given with its iframe, and a
       // destroyed player's iframe is gone, so re-using one element (e.g. when the page reloads the
@@ -128,10 +128,10 @@ export default function VideoPlayer() {
       ytHostRef.current.replaceChildren();
       const mount = document.createElement("div");
       ytHostRef.current.appendChild(mount);
-      playerRef.current = new YT.Player(mount, {
-        host: "https://www.youtube-nocookie.com",
+      // In the apps this plays through https://tonyoga.com/yt-player.html (YouTube error 153).
+      playerRef.current = makeYTPlayer(mount, {
         videoId: parseYouTubeId(v.video_url),
-        playerVars: { ...LOCKED_PLAYER_VARS, start: Math.floor(beginAt), cc_load_policy: 1, origin: window.location.origin },
+        playerVars: { ...LOCKED_PLAYER_VARS, start: Math.floor(beginAt), cc_load_policy: 1 },
         events: {
           onReady: () => {
             // Seek to the clip start and pause so the first visible frame IS the
@@ -143,7 +143,7 @@ export default function VideoPlayer() {
             if (end && end > start) setClipPct(Math.min(100, Math.max(0, ((beginAt - start) / (end - start)) * 100)));
           },
           onStateChange: (e) => {
-            const P = window.YT.PlayerState;
+            const P = YT_STATE;
             clearInterval(timerRef.current);
             if (e.data === P.PLAYING) {
               setPlaying(true); setBlocked(false); clearTimeout(blockTimer.current);
@@ -186,7 +186,7 @@ export default function VideoPlayer() {
           onError: (e) => { clearInterval(timerRef.current); setPlaying(false); setYtError(e?.data ?? -1); },
         },
       });
-    });
+    }).catch(() => { if (!cancelled) setYtError(-1); });
 
     return () => {
       cancelled = true;
@@ -218,7 +218,7 @@ export default function VideoPlayer() {
         blockTimer.current = setTimeout(() => {
           try {
             const st = playerRef.current?.getPlayerState?.();
-            const P = window.YT?.PlayerState || {};
+            const P = YT_STATE;
             if (st !== P.PLAYING && st !== P.BUFFERING) setBlocked(true);
           } catch { /* noop */ }
         }, 1800);
